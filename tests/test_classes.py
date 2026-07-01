@@ -30,6 +30,7 @@ reporting an all-failed batch.
 """
 
 import logging
+from typing import Literal, cast
 
 import jax.numpy as jnp
 import optimistix as optx
@@ -39,6 +40,7 @@ from optimistix import RESULTS
 
 from atmodeller.classes import EquilibriumModel
 from atmodeller.containers import ChemicalSpecies, Planet, SpeciesNetwork
+from atmodeller.output import Output
 from atmodeller.utilities import earth_oceans_to_hydrogen_mass
 
 # max_steps far below this sentinel, so every attempt reads as having exhausted the step budget.
@@ -186,3 +188,88 @@ def test_step_summary_reports_finite_max_when_attempts_stay_under_budget(caplog)
     messages: list[str] = [record.getMessage() for record in caplog.records]
     assert any(m == f"Solver steps (max) = {_STEPS_FINITE}" for m in messages)
     assert not any("no model solved below max_steps" in m for m in messages)
+
+
+def test_failed_resolve_clears_output_from_prior_success() -> None:
+    """A failed solve drops output stored by an earlier successful solve on the same model.
+
+    solve promises no output is stored when the batch fails to converge. On a model reused after an
+    earlier convergence this is not automatic: unless the guard clears it, the prior output stays in
+    place and is read as a result matching the new, non-converged constraints. This pins that a
+    failed re-solve both clears the private slot and makes the public accessor refuse. Without the
+    clear, the private slot would still hold the prior output and the first assertion below fails.
+    """
+    model: EquilibriumModel = _install_failed_solver(
+        _single_species_model(), num_steps=_STEPS_EXHAUSTED
+    )
+    # Stand in for output left by a prior successful solve; only its non-None presence matters here.
+    model._output = cast(Output, object())
+    assert model._output is not None
+
+    with pytest.raises(RuntimeError, match="No multistart model converged"):
+        model.solve(state=Planet(), mass_constraints=_mass_constraints(), solver="basic")
+
+    assert model._output is None
+    with pytest.raises(AttributeError, match="Output has not been set"):
+        _ = model.output
+
+
+def test_failed_solve_clears_output_before_convergence_guard() -> None:
+    """A solve that fails before the convergence check still drops output from a prior success.
+
+    The no-stale-output promise must hold on every failure path, not only the non-convergence
+    guard. An unknown solver name raises while the solver is being built, before the batch runs at
+    all. This pins that the output is cleared at the top of solve, so a stale solution from an
+    earlier convergence cannot survive an early exit. Were the clear placed only in the guard, the
+    prior output would still be readable here and the first assertion below would fail.
+    """
+    model: EquilibriumModel = _single_species_model()
+    # Stand in for output left by a prior successful solve; only its non-None presence matters here.
+    model._output = cast(Output, object())
+    assert model._output is not None
+
+    with pytest.raises(ValueError, match="Unknown solver type"):
+        model.solve(
+            state=Planet(),
+            mass_constraints=_mass_constraints(),
+            solver=cast(Literal["basic", "robust"], "bogus"),
+        )
+
+    assert model._output is None
+    with pytest.raises(AttributeError, match="Output has not been set"):
+        _ = model.output
+
+
+def test_basic_solver_dispatch_builds_independent_solver(monkeypatch) -> None:
+    """solver="basic" routes through make_independent_solver and still guards non-convergence.
+
+    The other tests pre-install a stub on the model, which bypasses solve's solver-construction
+    branch entirely. This one leaves the solver unset and intercepts the factory, so the basic
+    dispatch arm (build and record the independent solver) is exercised rather than skipped. The
+    built solver reports an all-failed batch, so the convergence guard must still raise, the
+    factory must have been invoked exactly once, and the recorded selection must flip from a
+    pre-seeded "robust" to "basic" to prove the dispatch arm did the recording (not the default).
+    """
+    model: EquilibriumModel = _single_species_model()
+    assert model._solver is None
+    # Seed the opposite selection so the post-solve "basic" assertion cannot pass on the default.
+    model._selected_solver = "robust"
+
+    built: dict = {"calls": 0}
+
+    def _fake_factory(parameters):
+        built["calls"] += 1
+
+        def _solver(base_solution_array, parameters, subkey):
+            return _all_failed_solution(parameters.batch_size, _STEPS_EXHAUSTED)
+
+        return _solver
+
+    monkeypatch.setattr("atmodeller.classes.make_independent_solver", _fake_factory)
+
+    with pytest.raises(RuntimeError, match="No multistart model converged"):
+        model.solve(state=Planet(), mass_constraints=_mass_constraints(), solver="basic")
+
+    # The dispatch arm built the solver exactly once and recorded the basic selection.
+    assert built["calls"] == 1
+    assert model._selected_solver == "basic"

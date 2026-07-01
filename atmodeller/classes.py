@@ -132,6 +132,12 @@ class EquilibriumModel:
                 batch size and solver step budget, and no output is stored, so a non-solution is
                 never mistaken for a converged state.
         """
+        # Clear any output from a prior solve on this reused model before attempting a new one,
+        # so no failure path (unknown solver, a solver-build error, or a non-converged batch) can
+        # leave a stale, non-matching solution readable through the output property. The success
+        # path restores the output once convergence is reached.
+        self._output = None
+
         parameters: Parameters = Parameters.create(
             self.species_network, state, fugacity_constraints, mass_constraints, solver_parameters
         )
