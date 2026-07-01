@@ -30,7 +30,7 @@ reporting an all-failed batch.
 """
 
 import logging
-from typing import Literal, cast
+from typing import cast
 
 import jax.numpy as jnp
 import optimistix as optx
@@ -214,26 +214,31 @@ def test_failed_resolve_clears_output_from_prior_success() -> None:
         _ = model.output
 
 
-def test_failed_solve_clears_output_before_convergence_guard() -> None:
-    """A solve that fails before the convergence check still drops output from a prior success.
+def test_failed_solve_clears_output_before_convergence_guard(monkeypatch) -> None:
+    """A solve that fails while building the solver still drops output from a prior success.
 
     The no-stale-output promise must hold on every failure path, not only the non-convergence
-    guard. An unknown solver name raises while the solver is being built, before the batch runs at
-    all. This pins that the output is cleared at the top of solve, so a stale solution from an
-    earlier convergence cannot survive an early exit. Were the clear placed only in the guard, the
-    prior output would still be readable here and the first assertion below would fail.
+    guard. The solver is constructed before the batch runs, so a build error exits solve early,
+    ahead of the convergence check. This pins that the output is cleared at the top of solve, so a
+    stale solution from an earlier convergence cannot survive an early exit. Were the clear placed
+    only in the guard, the prior output would still be readable here and the first assertion below
+    would fail.
     """
     model: EquilibriumModel = _single_species_model()
+    assert model._solver is None
     # Stand in for output left by a prior successful solve; only its non-None presence matters here.
     model._output = cast(Output, object())
     assert model._output is not None
 
-    with pytest.raises(ValueError, match="Unknown solver type"):
-        model.solve(
-            state=Planet(),
-            mass_constraints=_mass_constraints(),
-            solver=cast(Literal["basic", "robust"], "bogus"),
-        )
+    def _raise_on_build(parameters):
+        raise ValueError("solver build failed before the batch ran")
+
+    # The basic dispatch arm builds the solver through this factory; make it fail so solve exits
+    # during construction, strictly before the convergence guard runs.
+    monkeypatch.setattr("atmodeller.classes.make_independent_solver", _raise_on_build)
+
+    with pytest.raises(ValueError, match="solver build failed before the batch ran"):
+        model.solve(state=Planet(), mass_constraints=_mass_constraints(), solver="basic")
 
     assert model._output is None
     with pytest.raises(AttributeError, match="Output has not been set"):
