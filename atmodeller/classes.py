@@ -126,6 +126,11 @@ class EquilibriumModel:
             solver: Build a ``basic`` (faster compile time) or a ``robust`` (slower compile time)
                 solver. Defaults to ``robust``.
             solver_recompile: Force recompilation of the solver. Defaults to ``False``.
+
+        Raises:
+            RuntimeError: If no model in the multistart batch converges. The message reports the
+                batch size and solver step budget, and no output is stored, so a non-solution is
+                never mistaken for a converged state.
         """
         parameters: Parameters = Parameters.create(
             self.species_network, state, fugacity_constraints, mass_constraints, solver_parameters
