@@ -7,7 +7,7 @@ name: Publish test badges
 
 on:
   push:
-    branches: [ "main", "tl/badge-publish-workflow" ]
+    branches: [ "main" ]
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:
