@@ -19,6 +19,7 @@
 import logging
 
 import numpy as np
+import pytest
 from jaxtyping import ArrayLike
 from molmass import Formula
 
@@ -32,6 +33,9 @@ from atmodeller.utilities import earth_oceans_to_hydrogen_mass
 
 logger: logging.Logger = debug_logger()
 logger.setLevel(logging.WARNING)
+
+# End-to-end tests that build and solve a full EquilibriumModel.
+pytestmark = pytest.mark.integration
 
 RTOL: float = 1.0e-8
 """Relative tolerance"""

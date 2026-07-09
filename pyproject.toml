@@ -96,6 +96,12 @@ dev = [
 
 [tool.pytest.ini_options]
 beartype_packages = "atmodeller"
+markers = [
+    # End-to-end tests that build and solve a full EquilibriumModel. Every test
+    # not marked integration is a component (unit) test.
+    "integration: end-to-end tests that build and solve a full EquilibriumModel",
+    "unit: component test that checks a single model against reference values",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -1,13 +1,13 @@
 name: Publish test badges
 
-# Publishes the collected test count to a gist that the PROTEUS framework
-# website reads for the atmodeller validation row. This is a fork-only,
-# additive workflow: it does not touch the inherited ci.yml, so the fork stays
-# cleanly syncable with the upstream repository.
+# Publishes the test counts (total, unit, integration) to a gist that the
+# PROTEUS framework website reads for the atmodeller validation row. This is a
+# fork-only, additive workflow: it does not touch the inherited ci.yml, so the
+# fork stays cleanly syncable with the upstream repository.
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "tl/badge-publish-workflow" ]
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:
@@ -40,23 +40,40 @@ jobs:
         id: count
         run: |
           set -o pipefail
-          total=$(uv run pytest --collect-only -q 2>/dev/null \
-            | grep -oE '[0-9]+ tests? collected' | grep -oE '^[0-9]+' | tail -n1)
-          if [ -z "$total" ]; then
-            echo "Could not determine the test count from pytest output." >&2
+          count() {
+            uv run pytest --collect-only -q "$@" 2>/dev/null \
+              | grep -oE '[0-9]+ tests? collected' | grep -oE '^[0-9]+' | tail -n1
+          }
+          total=$(count)
+          integration=$(count -m integration)
+          unit=$(count -m "not integration")
+          for name in total integration unit; do
+            if [ -z "${!name}" ]; then
+              echo "Could not determine the $name test count from pytest output." >&2
+              exit 1
+            fi
+          done
+          # The two tiers must partition the whole suite.
+          if [ "$((unit + integration))" -ne "$total" ]; then
+            echo "Tier counts ($unit unit + $integration integration) do not sum to total ($total)." >&2
             exit 1
           fi
           echo "total=$total" >> "$GITHUB_OUTPUT"
-          echo "Collected $total tests"
+          echo "unit=$unit" >> "$GITHUB_OUTPUT"
+          echo "integration=$integration" >> "$GITHUB_OUTPUT"
+          echo "Collected $total tests ($unit unit, $integration integration)"
 
       - name: Write badge JSON
         run: |
           mkdir -p .github/badges
-          cat > .github/badges/tests-total.json <<JSON
-          {"schemaVersion": 1, "label": "tests", "message": "${{ steps.count.outputs.total }}", "color": "blue"}
-          JSON
+          fmt='{"schemaVersion": 1, "label": "%s", "message": "%s", "color": "blue"}\n'
+          printf "$fmt" tests       "${{ steps.count.outputs.total }}"       > .github/badges/tests-total.json
+          printf "$fmt" unit        "${{ steps.count.outputs.unit }}"        > .github/badges/tests-unit.json
+          printf "$fmt" integration "${{ steps.count.outputs.integration }}" > .github/badges/tests-integration.json
+          echo "--- badge JSON ---"
+          cat .github/badges/tests-total.json .github/badges/tests-unit.json .github/badges/tests-integration.json
 
-      - name: Publish badge to gist
+      - name: Publish badges to gist
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
@@ -72,10 +89,10 @@ jobs:
           if not token:
               raise RuntimeError("GIST_TOKEN is not set")
 
+          names = ["tests-total.json", "tests-unit.json", "tests-integration.json"]
           files = {
-              "tests-total.json": {
-                  "content": Path(".github/badges/tests-total.json").read_text(encoding="utf-8")
-              }
+              name: {"content": Path(".github/badges", name).read_text(encoding="utf-8")}
+              for name in names
           }
           req = Request(
               url=f"https://api.github.com/gists/{gist_id}",
