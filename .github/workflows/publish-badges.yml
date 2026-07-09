@@ -1,0 +1,116 @@
+name: Publish test badges
+
+# Publishes the test counts (total, unit, integration) to a gist that the
+# PROTEUS framework website reads for the atmodeller validation row. This is a
+# fork-only, additive workflow: it does not touch the inherited ci.yml, so the
+# fork stays cleanly syncable with the upstream repository.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  badges:
+    # Never run in the upstream repository or in other forks.
+    if: github.repository == 'FormingWorlds/atmodeller'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.20"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: Count collected tests
+        id: count
+        run: |
+          set -o pipefail
+          count() {
+            # pytest reports "N tests collected" with no filter, or
+            # "N/M tests collected (K deselected)" when a marker filter
+            # deselects tests. Take the selected count N (the first number,
+            # before any slash), not the suite total M.
+            uv run pytest --collect-only -q "$@" 2>/dev/null \
+              | sed -nE 's/^[[:space:]]*([0-9]+)(\/[0-9]+)? tests? collected.*/\1/p' | tail -n1
+          }
+          total=$(count)
+          integration=$(count -m integration)
+          unit=$(count -m "not integration")
+          for name in total integration unit; do
+            if [ -z "${!name}" ]; then
+              echo "Could not determine the $name test count from pytest output." >&2
+              exit 1
+            fi
+          done
+          # The two tiers must partition the whole suite.
+          if [ "$((unit + integration))" -ne "$total" ]; then
+            echo "Tier counts ($unit unit + $integration integration) do not sum to total ($total)." >&2
+            exit 1
+          fi
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "unit=$unit" >> "$GITHUB_OUTPUT"
+          echo "integration=$integration" >> "$GITHUB_OUTPUT"
+          echo "Collected $total tests ($unit unit, $integration integration)"
+
+      - name: Write badge JSON
+        run: |
+          mkdir -p .github/badges
+          fmt='{"schemaVersion": 1, "label": "%s", "message": "%s", "color": "blue"}\n'
+          printf "$fmt" tests       "${{ steps.count.outputs.total }}"       > .github/badges/tests-total.json
+          printf "$fmt" unit        "${{ steps.count.outputs.unit }}"        > .github/badges/tests-unit.json
+          printf "$fmt" integration "${{ steps.count.outputs.integration }}" > .github/badges/tests-integration.json
+          echo "--- badge JSON ---"
+          cat .github/badges/tests-total.json .github/badges/tests-unit.json .github/badges/tests-integration.json
+
+      - name: Publish badges to gist
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          set -e
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          gist_id = "3b0d1370019572c00e2650799e81717d"
+          token = os.environ.get("GIST_TOKEN", "").strip()
+          if not token:
+              raise RuntimeError("GIST_TOKEN is not set")
+
+          names = ["tests-total.json", "tests-unit.json", "tests-integration.json"]
+          files = {
+              name: {"content": Path(".github/badges", name).read_text(encoding="utf-8")}
+              for name in names
+          }
+          req = Request(
+              url=f"https://api.github.com/gists/{gist_id}",
+              data=json.dumps({"files": files}).encode("utf-8"),
+              method="PATCH",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+          )
+          with urlopen(req) as resp:
+              if resp.status != 200:
+                  raise RuntimeError(f"Failed to update gist, status={resp.status}")
+          print("Gist updated")
+          PY
