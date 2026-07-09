@@ -41,8 +41,12 @@ jobs:
         run: |
           set -o pipefail
           count() {
+            # pytest reports "N tests collected" with no filter, or
+            # "N/M tests collected (K deselected)" when a marker filter
+            # deselects tests. Take the selected count N (the first number,
+            # before any slash), not the suite total M.
             uv run pytest --collect-only -q "$@" 2>/dev/null \
-              | grep -oE '[0-9]+ tests? collected' | grep -oE '^[0-9]+' | tail -n1
+              | sed -nE 's/^[[:space:]]*([0-9]+)(\/[0-9]+)? tests? collected.*/\1/p' | tail -n1
           }
           total=$(count)
           integration=$(count -m integration)
