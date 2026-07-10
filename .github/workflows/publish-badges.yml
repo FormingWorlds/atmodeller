@@ -114,3 +114,23 @@ jobs:
                   raise RuntimeError(f"Failed to update gist, status={resp.status}")
           print("Gist updated")
           PY
+
+      - name: Measure coverage
+        # Coverage runs from this fork-only workflow, not the inherited ci.yml,
+        # so the fork stays cleanly syncable with upstream. The full suite runs
+        # so the reported figure spans both the unit and integration tiers.
+        run: uv run pytest --cov=atmodeller --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        # slug pins the report to this fork rather than the upstream repository
+        # the git metadata points at. The token guard turns a missing or rotated
+        # organisation secret into a visible skip instead of a silent no-op.
+        if: always() && env.CODECOV_TOKEN != ''
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: FormingWorlds/atmodeller
+          files: coverage.xml
+          fail_ci_if_error: false
