@@ -27,6 +27,8 @@ from atmodeller.containers import SolverParameters
 from atmodeller.solubility import get_solubility_models
 from atmodeller.thermodata import IronWustiteBuffer
 
+pytestmark = pytest.mark.integration
+
 ATMODELLER_SPECIES_STOICH: dict[str, tuple[str, dict[str, int]]] = {
     "H2O_g": ("H2O", {"H": 2, "O": 1}),
     "H2_g": ("H2", {"H": 2}),
