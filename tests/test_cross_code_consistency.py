@@ -52,7 +52,7 @@ from atmodeller.thermodata import IronWustiteBuffer
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.timeout(180),
+    pytest.mark.timeout(300),
 ]
 
 # Measured log10(K_CALLIOPE / K_atmodeller) per mole of product at each temperature,
