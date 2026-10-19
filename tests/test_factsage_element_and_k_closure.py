@@ -7,7 +7,9 @@ simultaneously:
 
 1. Matches the FactSage and FastChem reference gas partial pressures, condensate
    activities, and condensate total masses within a flat ``0.05 dex``
-   (``|log10(actual) - log10(target)| <= TOLERANCE``) for all species except 2
+   (``|log10(actual) - log10(target)| <= TOLERANCE``; note that
+   (test_graphite_water_stable, FactSage, mass_C_cd) lies 9e-5 dex below this tolerance
+   and is additionally pinned at its measured value +-0.002 dex) for all species except 2
    documented FactSage polynomial-amplified entries in ``RECORDED_SPECIES_OFFSETS_DEX``
    (checked within ``+-0.005 dex`` of their measured offset):
    - ``(test_CHO_oxidised, FactSage, CH4_g) = +0.093050 dex``: trace ``CH4_g``
@@ -383,6 +385,11 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                                 f"{case_id} ({ref_code}) condensate {cond_sp} total_mass: "
                                 f"|d_log10|={abs(signed_dex):.6f} dex > {TOLERANCE} dex"
                             )
+                            if rec_key == ("test_graphite_water_stable", "FactSage", "mass_C_cd"):
+                                assert abs(signed_dex - 0.049912) <= 0.002, (
+                                    f"{case_id} ({ref_code}) condensate {cond_sp} total_mass: "
+                                    f"d_log10={signed_dex:+.6f} dex outside +0.049912+-0.002 dex"
+                                )
                     else:
                         # At stability floor tau = 1e-25, inactive condensate mass is O(tau) of budget.
                         cond_el = next(iter(SPECIES_STOICH[cond_sp]))
