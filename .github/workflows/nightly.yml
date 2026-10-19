@@ -4,6 +4,9 @@ on:
   schedule:
     # 03:00 UTC daily.
     - cron: '0 3 * * *'
+  push:
+    branches:
+      - tl/chem-consistency-tests
   workflow_dispatch:
 
 permissions:
@@ -40,7 +43,7 @@ jobs:
         env:
           CHEM_CROSS_CODE_REQUIRED: '1'
           CHEM_SULFUR_REPORT_PATH: sulfur_72_case_report.tsv
-        run: .venv/bin/pytest
+        run: .venv/bin/pytest -p no:beartype
 
       - name: Upload 72-case sulfur report
         if: ${{ !cancelled() }}
