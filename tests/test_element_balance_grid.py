@@ -1,11 +1,11 @@
 """Elemental mass-balance consistency tests over the 75-case parameter grid.
 
-Verifies independent species-stoichiometry elemental mass recovery across gas,
-dissolved melt, and condensate phases against the input elemental inventory
-over the 60-point buffered grid (5 fO2 x 4 T x 3 inventories), the 12-point
-authoritative-oxygen grid (4 T x 3 inventories), the 2 named PROTEUS reference
-configurations (tutorial_earth and cmb_regression_singleimpact), and the
-5-noble-gas complement configuration.
+Verifies stoichiometric species-to-element mass recovery across gas, dissolved
+melt, and condensate phases against the input elemental inventory over the
+60-point buffered grid (5 fO2 x 4 T x 3 inventories), the 12-point
+authoritative-oxygen grid (4 T x 3 inventories), 2 volatile-inventory
+configurations using elemental budgets from PROTEUS reference inputs at
+T = 2000 K, and a 5-noble-gas complement configuration.
 """
 
 from __future__ import annotations
@@ -29,43 +29,28 @@ from atmodeller.thermodata import IronWustiteBuffer
 
 pytestmark = pytest.mark.integration
 
-ATMODELLER_SPECIES_STOICH: dict[str, tuple[str, dict[str, int]]] = {
-    "H2O_g": ("H2O", {"H": 2, "O": 1}),
-    "H2_g": ("H2", {"H": 2}),
-    "O2_g": ("O2", {"O": 2}),
-    "CO2_g": ("CO2", {"C": 1, "O": 2}),
-    "CO_g": ("CO", {"C": 1, "O": 1}),
-    "CH4_g": ("CH4", {"C": 1, "H": 4}),
-    "N2_g": ("N2", {"N": 2}),
-    "H3N_g": ("H3N", {"N": 1, "H": 3}),
-    "S2_g": ("S2", {"S": 2}),
-    "O2S_g": ("O2S", {"S": 1, "O": 2}),
-    "H2S_g": ("H2S", {"H": 2, "S": 1}),
-    "He_g": ("He", {"He": 1}),
-    "Ne_g": ("Ne", {"Ne": 1}),
-    "Ar_g": ("Ar", {"Ar": 1}),
-    "Kr_g": ("Kr", {"Kr": 1}),
-    "Xe_g": ("Xe", {"Xe": 1}),
-    "C_cd": ("C", {"C": 1}),
+ATMODELLER_SPECIES_STOICH: dict[str, dict[str, int]] = {
+    "H2O_g": {"H": 2, "O": 1},
+    "H2_g": {"H": 2},
+    "O2_g": {"O": 2},
+    "CO2_g": {"C": 1, "O": 2},
+    "CO_g": {"C": 1, "O": 1},
+    "CH4_g": {"C": 1, "H": 4},
+    "N2_g": {"N": 2},
+    "H3N_g": {"N": 1, "H": 3},
+    "S2_g": {"S": 2},
+    "O2S_g": {"S": 1, "O": 2},
+    "H2S_g": {"H": 2, "S": 1},
+    "He_g": {"He": 1},
+    "Ne_g": {"Ne": 1},
+    "Ar_g": {"Ar": 1},
+    "Kr_g": {"Kr": 1},
+    "Xe_g": {"Xe": 1},
+    "C_cd": {"C": 1},
 }
 
-# Derived from SolverParameters.atol = 1.0e-6 and the minimum nonzero target mass per element on the grid
-RTOL_SOLVER_GATE = 1.0e-6
-MIN_TARGET_KG_BY_ELEMENT: dict[str, float] = {
-    "H": 1.55e19,
-    "C": 1.55e19,
-    "N": 4.0e18,
-    "S": 1.55e19,
-    "O": 1.7977843000529335e20,
-    "He": 4.0311000000000005e18,
-    "Ne": 4.0311000000000005e18,
-    "Ar": 4.0311000000000005e18,
-    "Kr": 4.0311000000000005e18,
-    "Xe": 4.0311000000000005e18,
-}
-ATOL_SOLVER_PER_ELEMENT_KG: dict[str, float] = {
-    el: RTOL_SOLVER_GATE * m_min for el, m_min in MIN_TARGET_KG_BY_ELEMENT.items()
-}
+# Solver relative residual limit matching SolverParameters.atol = 1.0e-6.
+SOLVER_RESIDUAL_TOL = 1.0e-6
 
 
 def _reconstruct_atmodeller_element_masses(
@@ -73,12 +58,12 @@ def _reconstruct_atmodeller_element_masses(
     elements: tuple[str, ...],
     batch_idx: int = 0,
 ) -> dict[str, dict[str, float]]:
-    """Independently reconstruct per-element gas, melt, and condensate masses [kg] from species outputs."""
+    """Reconstruct per-element gas, melt, and condensate masses [kg] from species outputs."""
     el_mmw = {el: Formula(el).mass * 1e-3 for el in elements}
     res: dict[str, dict[str, float]] = {
         el: {"gas_kg": 0.0, "liq_kg": 0.0, "cond_kg": 0.0, "total_kg": 0.0} for el in elements
     }
-    for sp_key, (_formula_str, stoich) in ATMODELLER_SPECIES_STOICH.items():
+    for sp_key, stoich in ATMODELLER_SPECIES_STOICH.items():
         if sp_key not in out_dict:
             continue
         sp_data = out_dict[sp_key]
@@ -103,7 +88,7 @@ def _reconstruct_atmodeller_element_masses(
 
 
 def _build_grid_cases() -> list[dict]:
-    """Build the 75-case parameter grid (60 buffered + 12 authoritative O + 3 named/noble)."""
+    """Build the 75-case parameter grid (60 buffered + 12 authoritative O + 3 reference-budget/noble)."""
     mass_ocean = 1.55e20
     m_earth = 5.972e24
     r_earth = 6.335439e6
@@ -149,7 +134,6 @@ def _build_grid_cases() -> list[dict]:
                         "R_int": r_earth,
                         "Phi_global": 1.0,
                         "targets": {k: inv[k] for k in ("H", "C", "N", "S")},
-                        "nobles": (),
                     }
                 )
     for inv_label in inv_labels:
@@ -165,12 +149,12 @@ def _build_grid_cases() -> list[dict]:
                     "R_int": r_earth,
                     "Phi_global": 1.0,
                     "targets": {k: inv[k] for k in ("H", "C", "N", "S", "O")},
-                    "nobles": (),
                 }
             )
+    # Volatile budgets and fO2_shift_IW from PROTEUS reference inputs evaluated at T = 2000 K.
     cases.append(
         {
-            "case_id": "named_tutorial_earth_T2000_IW+2",
+            "case_id": "budget_tutorial_earth_T2000_IW+2",
             "mode": "buffered",
             "T_K": 2000.0,
             "fO2_shift_IW": 2.0,
@@ -178,12 +162,11 @@ def _build_grid_cases() -> list[dict]:
             "R_int": r_earth,
             "Phi_global": 1.0,
             "targets": {"H": 4.7e20, "C": 2.73e20, "N": 0.0, "S": 0.0},
-            "nobles": (),
         }
     )
     cases.append(
         {
-            "case_id": "named_cmb_regression_singleimpact_T2000_IW+1",
+            "case_id": "budget_cmb_singleimpact_T2000_IW+1",
             "mode": "buffered",
             "T_K": 2000.0,
             "fO2_shift_IW": 1.0,
@@ -191,7 +174,6 @@ def _build_grid_cases() -> list[dict]:
             "R_int": (0.5 ** (1.0 / 3.0)) * r_earth,
             "Phi_global": 1.0,
             "targets": {"H": 2.4e20, "C": 1.4e20, "N": 4.0e18, "S": 1.0e20},
-            "nobles": (),
         }
     )
     noble_mass = 1.0e-6 * m_mantle_default
@@ -200,7 +182,7 @@ def _build_grid_cases() -> list[dict]:
         noble_targets[ng] = noble_mass
     cases.append(
         {
-            "case_id": "named_noble_gas_complement_T2000_IW+2",
+            "case_id": "budget_noble_gas_complement_T2000_IW+2",
             "mode": "buffered_noble",
             "T_K": 2000.0,
             "fO2_shift_IW": 2.0,
@@ -208,7 +190,6 @@ def _build_grid_cases() -> list[dict]:
             "R_int": r_earth,
             "Phi_global": 1.0,
             "targets": noble_targets,
-            "nobles": ("He", "Ne", "Ar", "Kr", "Xe"),
         }
     )
     return cases
@@ -220,7 +201,7 @@ def _solve_and_assert_group(
     checked_elements: tuple[str, ...],
     authoritative_o: bool,
     solver_params: SolverParameters,
-) -> None:
+) -> tuple[bool, bool]:
     """Solve a homogeneous batch of grid cases and assert per-element mass balance."""
     n_batch = len(group_cases)
     cmf = 0.325
@@ -253,22 +234,35 @@ def _solve_and_assert_group(
         solver="robust",
         solver_parameters=solver_params,
     )
+    solver_success = np.asarray(model.output.multi_attempt_solution.solver_success, dtype=bool)
+    assert np.all(solver_success), (
+        f"Solver failed on {[group_cases[i]['case_id'] for i in np.where(~solver_success)[0]]}"
+    )
+
     out_dict = model.output.asdict()
     reconstruct_elems = checked_elements if authoritative_o else checked_elements + ("O",)
+    saw_liq = False
+    saw_cond = False
 
     for idx, case in enumerate(group_cases):
+        case_id = case["case_id"]
         rec = _reconstruct_atmodeller_element_masses(out_dict, reconstruct_elems, batch_idx=idx)
         if not authoritative_o:
-            assert math.isfinite(rec["O"]["total_kg"])
-            assert rec["O"]["total_kg"] > 0.0
+            assert math.isfinite(rec["O"]["total_kg"]), f"{case_id}: O total_kg not finite"
+            assert rec["O"]["total_kg"] > 0.0, f"{case_id}: O total_kg <= 0"
         for el in checked_elements:
+            if rec[el]["liq_kg"] > 0.0:
+                saw_liq = True
+            if rec[el]["cond_kg"] > 0.0:
+                saw_cond = True
             t_kg = float(case["targets"][el])
             rec_tot = rec[el]["total_kg"]
             abs_err = abs(rec_tot - t_kg)
-            solver_tol_kg = max(RTOL_SOLVER_GATE * t_kg, ATOL_SOLVER_PER_ELEMENT_KG[el])
+            solver_tol_kg = SOLVER_RESIDUAL_TOL * t_kg
             assert abs_err <= solver_tol_kg, (
-                f"{case['case_id']} {el}: |recovered - target| = {abs_err!r} > solver tol {solver_tol_kg!r}"
+                f"{case_id} {el}: |recovered - target| = {abs_err!r} > solver tol {solver_tol_kg!r}"
             )
+    return saw_liq, saw_cond
 
 
 def test_element_balance_across_75_case_grid():
@@ -294,26 +288,11 @@ def test_element_balance_across_75_case_grid():
     model_base = EquilibriumModel(SpeciesNetwork(base_species))
     model_autho = EquilibriumModel(SpeciesNetwork(base_species))
 
-    hco_species = (
-        ChemicalSpecies.create_gas("H2O", solubility=sol_models["H2O_peridotite_sossi23"]),
-        ChemicalSpecies.create_gas("H2", solubility=sol_models["H2_basalt_hirschmann12"]),
-        ChemicalSpecies.create_gas("O2"),
-        ChemicalSpecies.create_gas("CO2", solubility=sol_models["CO2_basalt_dixon95"]),
-        ChemicalSpecies.create_gas("CO", solubility=sol_models["CO_basalt_yoshioka19"]),
-        ChemicalSpecies.create_gas("CH4", solubility=sol_models["CH4_basalt_ardia13"]),
-        ChemicalSpecies.create_condensed("C"),
-    )
+    hco_species = base_species[:6] + base_species[-1:]
     model_hco = EquilibriumModel(SpeciesNetwork(hco_species))
 
-    noble_sol_keys = {
-        "He": "He_basalt_jambon86",
-        "Ne": "Ne_basalt_jambon86",
-        "Ar": "Ar_basalt_jambon86",
-        "Kr": "Kr_basalt_jambon86",
-        "Xe": "Xe_basalt_jambon86",
-    }
     noble_species = base_species + tuple(
-        ChemicalSpecies.create_gas(ng, solubility=sol_models[noble_sol_keys[ng]])
+        ChemicalSpecies.create_gas(ng, solubility=sol_models[f"{ng}_basalt_jambon86"])
         for ng in ("He", "Ne", "Ar", "Kr", "Xe")
     )
     model_noble = EquilibriumModel(SpeciesNetwork(noble_species))
@@ -323,30 +302,34 @@ def test_element_balance_across_75_case_grid():
     buf_4el_cases = [
         c
         for c in cases
-        if c["mode"] == "buffered" and not c["case_id"].startswith("named_tutorial_earth")
+        if c["mode"] == "buffered" and not c["case_id"].startswith("budget_tutorial_earth")
     ]
     autho_cases = [c for c in cases if c["mode"] == "authoritative_O"]
-    hco_cases = [c for c in cases if c["case_id"].startswith("named_tutorial_earth")]
+    hco_cases = [c for c in cases if c["case_id"].startswith("budget_tutorial_earth")]
     noble_cases = [c for c in cases if c["mode"] == "buffered_noble"]
 
     assert len(buf_4el_cases) + len(autho_cases) + len(hco_cases) + len(noble_cases) == 75
 
-    _solve_and_assert_group(model_base, buf_4el_cases, ("H", "C", "N", "S"), False, solver_params)
-    _solve_and_assert_group(
+    liq_b, cond_b = _solve_and_assert_group(
+        model_base, buf_4el_cases, ("H", "C", "N", "S"), False, solver_params
+    )
+    liq_a, cond_a = _solve_and_assert_group(
         model_autho, autho_cases, ("H", "C", "N", "S", "O"), True, solver_params
     )
-    _solve_and_assert_group(model_hco, hco_cases, ("H", "C"), False, solver_params)
-    _solve_and_assert_group(
+    liq_h, cond_h = _solve_and_assert_group(model_hco, hco_cases, ("H", "C"), False, solver_params)
+    liq_n, cond_n = _solve_and_assert_group(
         model_noble,
         noble_cases,
         ("H", "C", "N", "S", "He", "Ne", "Ar", "Kr", "Xe"),
         False,
         solver_params,
     )
+    assert any((liq_b, liq_a, liq_h, liq_n)), "Dissolved melt branch was never exercised"
+    assert any((cond_b, cond_a, cond_h, cond_n)), "Graphite condensate branch was never exercised"
 
 
 def test_engine_element_moles_and_mass_residual_against_stoichiometry():
-    """Verify get_element_moles, get_element_moles_in_melt, and objective_function directly against stoichiometry."""
+    """Verify get_element_moles, get_element_moles_in_melt, and objective_function against stoichiometry."""
     sol_models = get_solubility_models()
     species = (
         ChemicalSpecies.create_gas("H2O", solubility=sol_models["H2O_peridotite_sossi23"]),
@@ -379,6 +362,7 @@ def test_engine_element_moles_and_mass_residual_against_stoichiometry():
         solver="basic",
         solver_parameters=SolverParameters(atol=1.0e-6, rtol=1.0e-4, max_steps=1024),
     )
+    assert bool(np.squeeze(model.output.multi_attempt_solution.solver_success))
 
     params = model.output.parameters
     log_n_batch = jnp.asarray(model.output.log_number_moles)
@@ -389,12 +373,7 @@ def test_engine_element_moles_and_mass_residual_against_stoichiometry():
     obj_res = np.squeeze(
         np.asarray(model.output.vmapf.objective_function(jnp.asarray(model.output.solution)))
     )
-    assert np.all(np.abs(obj_res) <= RTOL_SOLVER_GATE)
-
-    formula_mat = np.asarray(params.species_network.formula_matrix)
-    sp_moles_gas_cond = np.exp(np.squeeze(np.asarray(log_n_batch)))
-    expected_gas_cond = formula_mat @ sp_moles_gas_cond
-    assert el_moles_gas_cond == pytest.approx(expected_gas_cond, rel=1.0e-12)
+    assert np.all(np.abs(obj_res) <= SOLVER_RESIDUAL_TOL)
     assert np.all(el_moles_gas_cond > 0.0)
     assert np.all(el_moles_melt > 0.0)
 
@@ -402,15 +381,28 @@ def test_engine_element_moles_and_mass_residual_against_stoichiometry():
     unique_elements = params.species_network.unique_elements
     for idx, el in enumerate(unique_elements):
         el_mmw = Formula(el).mass * 1e-3
+        expected_gas_cond_moles = 0.0
         expected_melt_moles = 0.0
-        for sp_key, (_f_str, stoich) in ATMODELLER_SPECIES_STOICH.items():
-            if sp_key in out_dict and not sp_key.endswith("_cd") and el in stoich:
-                m_sp = sum(n * Formula(e).mass * 1e-3 for e, n in stoich.items())
+        for sp_key, stoich in ATMODELLER_SPECIES_STOICH.items():
+            if sp_key not in out_dict or el not in stoich:
+                continue
+            m_sp = sum(n * Formula(e).mass * 1e-3 for e, n in stoich.items())
+            if sp_key.endswith("_cd"):
+                sp_cond_kg = float(np.squeeze(out_dict[sp_key]["total_mass"]))
+                expected_gas_cond_moles += (sp_cond_kg / m_sp) * stoich[el]
+            else:
+                sp_gas_kg = float(np.squeeze(out_dict[sp_key]["gas_mass"]))
                 sp_liq_kg = float(np.squeeze(out_dict[sp_key]["dissolved_mass"]))
+                expected_gas_cond_moles += (sp_gas_kg / m_sp) * stoich[el]
                 expected_melt_moles += (sp_liq_kg / m_sp) * stoich[el]
-        assert el_moles_melt[idx] == pytest.approx(expected_melt_moles, rel=1.0e-12)
+        assert el_moles_gas_cond[idx] == pytest.approx(
+            expected_gas_cond_moles, rel=1.0e-12, abs=0.0
+        ), f"gas+cond moles mismatch for {el}"
+        assert el_moles_melt[idx] == pytest.approx(expected_melt_moles, rel=1.0e-12, abs=0.0), (
+            f"melt moles mismatch for {el}"
+        )
         if el in targets:
             target_moles = targets[el] / el_mmw
             total_moles = el_moles_gas_cond[idx] + el_moles_melt[idx]
             rel_err = abs(total_moles / target_moles - 1.0)
-            assert rel_err <= RTOL_SOLVER_GATE
+            assert rel_err <= SOLVER_RESIDUAL_TOL, f"{el} relative closure error {rel_err}"
