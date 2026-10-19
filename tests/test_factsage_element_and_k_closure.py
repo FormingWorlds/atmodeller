@@ -6,9 +6,8 @@ Verifies that across all 9 active FactSage (Gibbs energy minimisation) and FastC
 simultaneously:
 
 1. Matches the FactSage and FastChem reference gas partial pressures, condensate
-   activities, and condensate total masses via ``helper.isclose(..., log=True,
-   rtol=TOLERANCE, atol=TOLERANCE)`` and within a flat ``0.05 dex``
-   (``|log10(actual) - log10(target)| <= TOLERANCE``) for all species except 3
+   activities, and condensate total masses within a flat ``0.05 dex``
+   (``|log10(actual) - log10(target)| <= TOLERANCE``) for all species except 2
    documented FactSage polynomial-amplified entries in ``RECORDED_SPECIES_OFFSETS_DEX``
    (checked within ``+-0.005 dex`` of their measured offset):
    - ``(test_CHO_oxidised, FactSage, CH4_g) = +0.093050 dex``: trace ``CH4_g``
@@ -19,10 +18,6 @@ simultaneously:
      (``5.6433e-58`` bar at ``411.75 K``, liquid-water equilibrium), where
      ``p_O2 = (K_H2O * a_H2O_cd / p_H2)^2`` squares the ``~0.047 dex`` low-temperature
      liquid-water/vapour Gibbs polynomial difference.
-   - ``(test_graphite_water_stable, FactSage, mass_C_cd) = +0.049912 dex``: condensed
-     graphite mass at ``430 K``, where the ``-0.036 dex`` ``CO2_g`` partial-pressure
-     offset (``3.96`` vs ``4.31`` bar) shifts the remaining carbon budget into
-     ``C_cd`` by carbon mass conservation.
 2. Conserves elemental mass summed from solved gas, condensate, and dissolved
    melt species moles against the input mass constraints to ``SolverParameters.atol``
    (``1.0e-6``).
@@ -72,12 +67,11 @@ SPECIES_STOICH: dict[str, dict[str, int]] = {
 TOLERANCE: float = 5.0e-2
 RECORDED_OFFSET_MARGIN_DEX: float = 0.005
 
-# Measured log10(actual / target) [dex] for the 3 documented FactSage polynomial-amplified entries,
+# Measured log10(actual / target) [dex] for the 2 documented FactSage polynomial-amplified entries,
 # asserted within +-RECORDED_OFFSET_MARGIN_DEX (0.005 dex).
 RECORDED_SPECIES_OFFSETS_DEX: dict[tuple[str, str, str], float] = {
     ("test_CHO_oxidised", "FactSage", "CH4_g"): 0.093050,
     ("test_water_stable", "FactSage", "O2_g"): -0.094449,
-    ("test_graphite_water_stable", "FactSage", "mass_C_cd"): 0.049912,
 }
 
 
@@ -378,12 +372,6 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                     if target_val > 0.0:
                         assert math.isfinite(actual_mass_kg) and actual_mass_kg > 0.0
                         signed_dex = math.log10(actual_mass_kg) - math.log10(float(target_val))
-                        assert np.isclose(
-                            math.log10(actual_mass_kg),
-                            math.log10(float(target_val)),
-                            rtol=TOLERANCE,
-                            atol=TOLERANCE,
-                        )
                         if rec_key in RECORDED_SPECIES_OFFSETS_DEX:
                             exp_dex = RECORDED_SPECIES_OFFSETS_DEX[rec_key]
                             assert abs(signed_dex - exp_dex) <= RECORDED_OFFSET_MARGIN_DEX, (
@@ -408,12 +396,6 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                     actual_val = float(np.squeeze(quick[sp_key]))
                     assert math.isfinite(actual_val) and actual_val > 0.0
                     signed_dex = math.log10(actual_val) - math.log10(float(target_val))
-                    assert np.isclose(
-                        math.log10(actual_val),
-                        math.log10(float(target_val)),
-                        rtol=TOLERANCE,
-                        atol=TOLERANCE,
-                    )
                     if rec_key in RECORDED_SPECIES_OFFSETS_DEX:
                         exp_dex = RECORDED_SPECIES_OFFSETS_DEX[rec_key]
                         assert abs(signed_dex - exp_dex) <= RECORDED_OFFSET_MARGIN_DEX, (

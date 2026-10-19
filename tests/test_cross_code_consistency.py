@@ -8,9 +8,9 @@ Verifies:
    per-temperature reaction-data offset (K_OFFSET_EXPECTED_DEX). For H2S,
    CALLIOPE's janaf_H2S (tools/fit_H2S.ipynb) fits g_H2S - g_S2 - g_H2 (unit S2
    stoichiometric coefficient over 200-4000 K instead of 0.5 S2), producing a
-   +0.29 to -0.39 dex per-mole K_p offset across 1500-3000 K; H2S, S2, buffered
-   SO2, and any buffered case-species key whose offset shifts by > 0.002 dex under
-   a 0.5 S2 refit are held (reported, not asserted) for the H2S constant fix.
+   +0.29 to -0.39 dex per-mole K_p offset across 1500-3000 K; H2S, S2, and any
+   buffered case-species key whose offset shifts by > 0.002 dex under a 0.5 S2
+   refit are held: these keys depend on the janaf_H2S constant.
 2. Live 72-case gas-only equilibrium cross-comparison against CALLIOPE (60
    buffered cases with matched fO2 plus 12 authoritative-O cases) on the shared
    volatile species. Elemental inventories are defined in moles
@@ -19,8 +19,8 @@ Verifies:
    (calliope.constants.molar_mass and molmass.Formula), and surface gravity is
    taken from atmodeller.Planet.surface_gravity. Across all 12 authoritative-O
    cases (1500 to 3000 K), solved log10(fO2) (O2 partial pressure) agrees within
-   0.003 dex and secondary species (H2, CO, CH4, NH3) follow the per-temperature
-   reaction-constant offsets within +-0.005 dex.
+   [-0.005, +0.005] dex and secondary species (H2, CO, CH4, NH3) follow DeltaK
+   plus the propagated H2, CO2 and O2 offsets within +-0.005 dex.
 """
 
 from __future__ import annotations
@@ -50,10 +50,13 @@ from atmodeller.containers import (
 from atmodeller.engine import get_log_Kp
 from atmodeller.thermodata import IronWustiteBuffer
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.timeout(180),
+]
 
 # Measured log10(K_CALLIOPE / K_atmodeller) per mole of product at each temperature,
-# asserted within +-K_OFFSET_MARGIN_DEX (0.002 dex); H2S is held for the H2S constant fix.
+# asserted within +-K_OFFSET_MARGIN_DEX (0.002 dex); H2S is held: these keys depend on the janaf_H2S constant.
 K_OFFSET_MARGIN_DEX: float = 0.002
 K_OFFSET_HELD_FOR_H2S_FIX: tuple[str, ...] = ("H2S",)
 K_OFFSET_EXPECTED_DEX: dict[float, dict[str, float]] = {
@@ -63,36 +66,69 @@ K_OFFSET_EXPECTED_DEX: dict[float, dict[str, float]] = {
     3000.0: {"H2": 0.003666, "CO": 0.005555, "CH4": 0.072052, "SO2": 0.007657, "NH3": 0.059389},
 }
 
-# Keys held (reported, not asserted) for the CALLIOPE janaf_H2S constant fix:
-# buffered SO2, H2S, S2 on all 60 buffered cases plus the 101 buffered (case_id, species)
+# Keys held: these keys depend on the janaf_H2S constant:
+# buffered H2S, S2 on all 60 buffered cases plus the 152 buffered (case_id, species)
 # keys whose offset shifts by > 0.002 dex under the S2-coefficient-0.5 janaf_H2S refit.
-BUFFERED_SPECIES_HELD_FOR_H2S_FIX: tuple[str, ...] = ("SO2", "H2S", "S2")
+BUFFERED_SPECIES_HELD_FOR_H2S_FIX: tuple[str, ...] = ("H2S", "S2")
 AUTHO_HELD_FOR_H2S_FIX: tuple[str, ...] = ("H2S", "S2")
 BUFFERED_CASE_KEYS_HELD_FOR_H2S_FIX: dict[str, tuple[str, ...]] = {
-    "buffered_low_T1500_IW+4": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_low_T2000_IW+2": ("CH4",),
-    "buffered_low_T2500_IW-4": ("H2O", "H2", "NH3", "CH4"),
-    "buffered_low_T2500_IW-2": ("H2O", "H2", "NH3", "CH4"),
-    "buffered_low_T2500_IW+0": ("P_surf", "H2O", "H2", "NH3", "CH4"),
-    "buffered_low_T3000_IW-4": ("H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_low_T3000_IW-2": ("H2O", "H2", "NH3", "CH4"),
-    "buffered_low_T3000_IW+0": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_default_T1500_IW+4": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_default_T2000_IW+2": ("CH4",),
-    "buffered_default_T2500_IW+0": ("H2O", "H2", "NH3", "CH4"),
-    "buffered_default_T2500_IW+2": ("P_surf", "H2O", "H2", "NH3", "CH4"),
-    "buffered_default_T3000_IW-4": ("H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_default_T3000_IW-2": ("H2O", "H2", "NH3", "CH4"),
-    "buffered_default_T3000_IW+0": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_high_T1500_IW+4": ("NH3", "CH4"),
-    "buffered_high_T2500_IW+2": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
-    "buffered_high_T3000_IW+0": ("P_surf", "H2O", "H2", "NH3", "CH4"),
-    "buffered_high_T3000_IW+2": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO"),
+    "buffered_default_T1500_IW+0": ("SO2",),
+    "buffered_default_T1500_IW+2": ("SO2",),
+    "buffered_default_T1500_IW+4": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_default_T1500_IW-2": ("SO2",),
+    "buffered_default_T1500_IW-4": ("SO2",),
+    "buffered_default_T2000_IW+0": ("SO2",),
+    "buffered_default_T2000_IW+2": ("CH4", "SO2"),
+    "buffered_default_T2000_IW-2": ("SO2",),
+    "buffered_default_T2000_IW-4": ("SO2",),
+    "buffered_default_T2500_IW+0": ("H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_default_T2500_IW+2": ("P_surf", "H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_default_T2500_IW-2": ("SO2",),
+    "buffered_default_T2500_IW-4": ("SO2",),
+    "buffered_default_T3000_IW+0": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_default_T3000_IW+2": ("SO2",),
+    "buffered_default_T3000_IW-2": ("H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_default_T3000_IW-4": ("H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_high_T1500_IW+0": ("SO2",),
+    "buffered_high_T1500_IW+2": ("SO2",),
+    "buffered_high_T1500_IW+4": ("NH3", "CH4", "SO2"),
+    "buffered_high_T1500_IW-2": ("SO2",),
+    "buffered_high_T1500_IW-4": ("SO2",),
+    "buffered_high_T2000_IW+0": ("SO2",),
+    "buffered_high_T2000_IW+2": ("SO2",),
+    "buffered_high_T2000_IW+4": ("SO2",),
+    "buffered_high_T2000_IW-2": ("SO2",),
+    "buffered_high_T2000_IW-4": ("SO2",),
+    "buffered_high_T2500_IW+0": ("SO2",),
+    "buffered_high_T2500_IW+2": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_high_T2500_IW-2": ("SO2",),
+    "buffered_high_T2500_IW-4": ("SO2",),
+    "buffered_high_T3000_IW+0": ("P_surf", "H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_high_T3000_IW+2": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_high_T3000_IW-2": ("SO2",),
+    "buffered_high_T3000_IW-4": ("SO2",),
+    "buffered_low_T1500_IW+0": ("SO2",),
+    "buffered_low_T1500_IW+2": ("SO2",),
+    "buffered_low_T1500_IW+4": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_low_T1500_IW-2": ("SO2",),
+    "buffered_low_T1500_IW-4": ("SO2",),
+    "buffered_low_T2000_IW+0": ("SO2",),
+    "buffered_low_T2000_IW+2": ("CH4", "SO2"),
+    "buffered_low_T2000_IW-2": ("SO2",),
+    "buffered_low_T2000_IW-4": ("SO2",),
+    "buffered_low_T2500_IW+0": ("P_surf", "H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_low_T2500_IW+2": ("SO2",),
+    "buffered_low_T2500_IW-2": ("H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_low_T2500_IW-4": ("H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_low_T3000_IW+0": ("P_surf", "H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
+    "buffered_low_T3000_IW-2": ("H2O", "H2", "NH3", "CH4", "SO2"),
+    "buffered_low_T3000_IW-4": ("H2O", "N2", "H2", "NH3", "CH4", "CO2", "CO", "SO2"),
 }
 
 # Measured per-case log10(P_CALLIOPE / P_atmodeller) offsets at matched moles and g_surf = 9.930522 m s^-2
 # for all H2S-independent keys (shift <= 0.002 dex), asserted within +-0.005 dex.
 GRID_OFFSET_MARGIN_DEX: float = 0.005
+AUTHO_MAJOR_MARGIN_DEX: float = 0.001
 BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
     "buffered_low_T1500_IW-4": {
         "P_surf": -0.000855,
@@ -183,6 +219,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.106245,
         "CO2": 0.000303,
         "CO": -0.005846,
+        "SO2": +0.000052,
     },
     "buffered_low_T2500_IW-4": {
         "P_surf": 0.000038,
@@ -216,6 +253,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.106625,
         "CO2": 0.000236,
         "CO": -0.004300,
+        "SO2": +0.000010,
     },
     "buffered_low_T3000_IW-4": {"P_surf": 0.000072},
     "buffered_low_T3000_IW-2": {
@@ -234,6 +272,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.076289,
         "CO2": -0.002216,
         "CO": 0.003339,
+        "SO2": +0.000368,
     },
     "buffered_low_T3000_IW+4": {
         "P_surf": -0.000010,
@@ -244,6 +283,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.078985,
         "CO2": -0.000312,
         "CO": 0.005243,
+        "SO2": -0.000016,
     },
     "buffered_default_T1500_IW-4": {
         "P_surf": -0.001930,
@@ -334,6 +374,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.106337,
         "CO2": 0.000320,
         "CO": -0.005829,
+        "SO2": +0.000410,
     },
     "buffered_default_T2500_IW-4": {
         "P_surf": -0.000137,
@@ -371,6 +412,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.106637,
         "CO2": 0.000238,
         "CO": -0.004298,
+        "SO2": +0.000056,
     },
     "buffered_default_T3000_IW-4": {"P_surf": 0.000057},
     "buffered_default_T3000_IW-2": {
@@ -399,6 +441,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.078941,
         "CO2": -0.000327,
         "CO": 0.005228,
+        "SO2": -0.000025,
     },
     "buffered_high_T1500_IW-4": {
         "P_surf": 0.000058,
@@ -538,6 +581,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.106755,
         "CO2": 0.000260,
         "CO": -0.004276,
+        "SO2": +0.000509,
     },
     "buffered_high_T3000_IW-4": {
         "P_surf": -0.001193,
@@ -570,6 +614,7 @@ BUFFERED_EXPECTED_DEX: dict[str, dict[str, float]] = {
         "CH4": 0.078945,
         "CO2": -0.000328,
         "CO": 0.005227,
+        "SO2": +0.000034,
     },
 }
 
@@ -892,49 +937,33 @@ def test_atmodeller_get_log_kp_and_gas_only_speciation_vs_janaf_schaefer(record_
         q_ch4 = p_ch4 * p_o2 / (p_co2 * (p_h2**2))
         q_h2s = p_h2s / ((p_s2**0.5) * p_h2)
 
-        assert "H2S" in K_OFFSET_HELD_FOR_H2S_FIX
         cal_ref = {k: float(m.callmodel(float(t_k))[0]) for k, m in keq_models.items()}
-        d_h2s = 0.5 * cal_ref["janaf_H2S"] - math.log10(q_h2s)
-        h2s_report_rows.append(f"{t_label}: d_log10_K_H2S={d_h2s:+.6f} dex")
-
+        product_quotients = {
+            "H2": cal_ref["janaf_H2"] - math.log10(q_h2),
+            "CO": cal_ref["janaf_CO"] - math.log10(q_co),
+            "CH4": cal_ref["schaefer_CH4"] - math.log10(q_ch4),
+            "SO2": 0.5 * cal_ref["janaf_SO2"] - math.log10(q_so2),
+            "NH3": 0.5 * cal_ref["janaf_NH3"] - math.log10(q_nh3),
+            "H2S": 0.5 * cal_ref["janaf_H2S"] - math.log10(q_h2s),
+        }
         exp_k = K_OFFSET_EXPECTED_DEX[float(t_k)]
-        _assert_near_dex(
-            cal_ref["janaf_H2"] - math.log10(q_h2),
-            exp_k["H2"],
-            K_OFFSET_MARGIN_DEX,
-            f"{t_label} H2",
-        )
-        _assert_near_dex(
-            cal_ref["janaf_CO"] - math.log10(q_co),
-            exp_k["CO"],
-            K_OFFSET_MARGIN_DEX,
-            f"{t_label} CO",
-        )
-        _assert_near_dex(
-            0.5 * cal_ref["janaf_SO2"] - math.log10(q_so2),
-            exp_k["SO2"],
-            K_OFFSET_MARGIN_DEX,
-            f"{t_label} SO2",
-        )
-        _assert_near_dex(
-            0.5 * cal_ref["janaf_NH3"] - math.log10(q_nh3),
-            exp_k["NH3"],
-            K_OFFSET_MARGIN_DEX,
-            f"{t_label} NH3",
-        )
-        _assert_near_dex(
-            cal_ref["schaefer_CH4"] - math.log10(q_ch4),
-            exp_k["CH4"],
-            K_OFFSET_MARGIN_DEX,
-            f"{t_label} CH4",
-        )
+        for sp, d_val in product_quotients.items():
+            if sp in K_OFFSET_HELD_FOR_H2S_FIX:
+                h2s_report_rows.append(f"{t_label}: d_log10_K_{sp}={d_val:+.6f} dex")
+            else:
+                _assert_near_dex(
+                    d_val,
+                    exp_k[sp],
+                    K_OFFSET_MARGIN_DEX,
+                    f"{t_label} {sp}",
+                )
 
     h2s_summary = "; ".join(h2s_report_rows)
     record_property("h2s_k_offsets_dex", h2s_summary)
     print(f"H2S equilibrium-constant offsets vs CALLIOPE: {h2s_summary}")
 
 
-def test_atmodeller_vs_calliope_72_case_gas_only_grid(record_property):
+def test_atmodeller_vs_calliope_72_case_gas_only_grid(record_property, tmp_path):
     """Verify atmodeller vs CALLIOPE cross-code agreement over all 72 gas-only grid cases."""
     _import_sibling("calliope")
     from calliope.constants import molar_mass, noble_gases, ocean_moles, volatile_species
@@ -1155,188 +1184,231 @@ def test_atmodeller_vs_calliope_72_case_gas_only_grid(record_property):
             )
         return equilibrium_atmosphere(target, ddict, p_guess=p_g, **kw), True
 
+    report_env = os.environ.get("CHEM_SULFUR_REPORT_PATH")
+    report_path = Path(report_env) if report_env else (tmp_path / "sulfur_72_case_report.tsv")
+
     sulfur_report_rows: list[str] = []
     sulfur_tsv_rows: list[str] = []
     held_for_h2s_rows: list[str] = []
     preseed_count = 0
 
-    for idx, case in enumerate(buffered_cases):
-        cid = case["case_id"]
-        cal_out, used_preseed = solve_cal(
-            case["cal_targets"], case["T_K"], case["fO2_shift_IW"], autho=False
-        )
-        if used_preseed:
-            preseed_count += 1
+    try:
+        for idx, case in enumerate(buffered_cases):
+            cid = case["case_id"]
+            cal_out, used_preseed = solve_cal(
+                case["cal_targets"], case["T_K"], case["fO2_shift_IW"], autho=False
+            )
+            if used_preseed:
+                preseed_count += 1
 
-        rec_masses = _reconstruct_gas_element_masses(
-            cal_out,
-            r_int=r_earth,
-            g_surf=g_surf,
-            elements=("H", "C", "N", "S"),
-            molar_mass_map=molar_mass,
-        )
-        hcns_max = max(float(case["cal_targets"][k]) for k in ("H", "C", "N", "S"))
-        cal_tol = hcns_max * 1.0e-5 + 1.0e10 + float(TRUNC_MASS)
-        for el in ("H", "C", "N", "S"):
-            assert abs(rec_masses[el] - float(case["cal_targets"][el])) <= cal_tol, (
-                f"{cid} reconstructed {el} mass mismatch"
+            rec_masses = _reconstruct_gas_element_masses(
+                cal_out,
+                r_int=r_earth,
+                g_surf=g_surf,
+                elements=("H", "C", "N", "S"),
+                molar_mass_map=molar_mass,
             )
+            hcns_max = max(float(case["cal_targets"][k]) for k in ("H", "C", "N", "S"))
+            cal_tol = hcns_max * 1.0e-5 + 1.0e10 + float(TRUNC_MASS)
+            for el in ("H", "C", "N", "S"):
+                assert abs(rec_masses[el] - float(case["cal_targets"][el])) <= cal_tol, (
+                    f"{cid} reconstructed {el} mass mismatch"
+                )
 
-        exp_case = BUFFERED_EXPECTED_DEX[cid]
-        held_case = BUFFERED_CASE_KEYS_HELD_FOR_H2S_FIX.get(cid, ())
-        d_psurf = math.log10(float(cal_out["P_surf"]) / float(ptot_buf[idx]))
-        if "P_surf" in held_case:
-            held_for_h2s_rows.append(f"{cid}:P_surf={d_psurf:+.6f}")
-        else:
-            _assert_near_dex(
-                d_psurf,
-                exp_case["P_surf"],
-                GRID_OFFSET_MARGIN_DEX,
-                f"{cid} P_surf",
-            )
-        for sp_cal, sp_atm in (
-            ("H2O", "H2O_g"),
-            ("N2", "N2_g"),
-            ("H2", "H2_g"),
-            ("NH3", "H3N_g"),
-            ("CH4", "CH4_g"),
-            ("CO2", "CO2_g"),
-            ("CO", "CO_g"),
-            ("SO2", "O2S_g"),
-        ):
-            d_sp = math.log10(
-                float(cal_out[f"{sp_cal}_bar"]) / float(asdict_buf[sp_atm]["pressure"][idx])
-            )
-            if sp_cal in BUFFERED_SPECIES_HELD_FOR_H2S_FIX or sp_cal in held_case:
-                held_for_h2s_rows.append(f"{cid}:{sp_cal}={d_sp:+.6f}")
+            exp_case = BUFFERED_EXPECTED_DEX[cid]
+            held_case = BUFFERED_CASE_KEYS_HELD_FOR_H2S_FIX.get(cid, ())
+            d_psurf = math.log10(float(cal_out["P_surf"]) / float(ptot_buf[idx]))
+            if "P_surf" in held_case:
+                held_for_h2s_rows.append(f"{cid}:P_surf={d_psurf:+.6f}")
             else:
                 _assert_near_dex(
-                    d_sp,
-                    exp_case[sp_cal],
+                    d_psurf,
+                    exp_case["P_surf"],
                     GRID_OFFSET_MARGIN_DEX,
+                    f"{cid} P_surf",
+                )
+            for sp_cal, sp_atm in (
+                ("H2O", "H2O_g"),
+                ("N2", "N2_g"),
+                ("H2", "H2_g"),
+                ("NH3", "H3N_g"),
+                ("CH4", "CH4_g"),
+                ("CO2", "CO2_g"),
+                ("CO", "CO_g"),
+                ("SO2", "O2S_g"),
+            ):
+                d_sp = math.log10(
+                    float(cal_out[f"{sp_cal}_bar"]) / float(asdict_buf[sp_atm]["pressure"][idx])
+                )
+                if sp_cal in BUFFERED_SPECIES_HELD_FOR_H2S_FIX or sp_cal in held_case:
+                    held_for_h2s_rows.append(f"{cid}:{sp_cal}={d_sp:+.6f}")
+                else:
+                    _assert_near_dex(
+                        d_sp,
+                        exp_case[sp_cal],
+                        GRID_OFFSET_MARGIN_DEX,
+                        f"{cid} {sp_cal}",
+                    )
+
+            q_so2_cal = float(cal_out["SO2_bar"]) / (
+                (float(cal_out["S2_bar"]) ** 0.5) * float(cal_out["O2_bar"])
+            )
+            q_so2_atm = float(asdict_buf["O2S_g"]["pressure"][idx]) / (
+                (float(asdict_buf["S2_g"]["pressure"][idx]) ** 0.5)
+                * float(asdict_buf["O2_g"]["pressure"][idx])
+            )
+            _assert_near_dex(
+                math.log10(q_so2_cal / q_so2_atm),
+                K_OFFSET_EXPECTED_DEX[case["T_K"]]["SO2"],
+                K_OFFSET_MARGIN_DEX,
+                f"{cid} Q_SO2",
+            )
+
+            d_h2s_case = math.log10(
+                float(cal_out["H2S_bar"]) / float(asdict_buf["H2S_g"]["pressure"][idx])
+            )
+            d_s2_case = math.log10(
+                float(cal_out["S2_bar"]) / float(asdict_buf["S2_g"]["pressure"][idx])
+            )
+            d_so2_case = math.log10(
+                float(cal_out["SO2_bar"]) / float(asdict_buf["O2S_g"]["pressure"][idx])
+            )
+            sulfur_report_rows.append(
+                f"{cid}: d_H2S={d_h2s_case:+.4f}, d_S2={d_s2_case:+.4f}, d_SO2={d_so2_case:+.4f}"
+            )
+            sulfur_tsv_rows.append(
+                f"{cid}\t{d_h2s_case:+.6f}\t{d_s2_case:+.6f}\t{d_so2_case:+.6f}"
+            )
+
+        for idx, case in enumerate(autho_cases):
+            cid = case["case_id"]
+            cal_out, used_preseed = solve_cal(
+                case["cal_targets"], case["T_K"], case["fO2_shift_IW"], autho=True
+            )
+            if used_preseed:
+                preseed_count += 1
+
+            rec_masses = _reconstruct_gas_element_masses(
+                cal_out,
+                r_int=r_earth,
+                g_surf=g_surf,
+                elements=("H", "C", "N", "S", "O"),
+                molar_mass_map=molar_mass,
+            )
+            for el in ("H", "C", "N", "S", "O"):
+                cal_el_tol = max(float(case["cal_targets"][el]) * 1.0e-5, float(TRUNC_MASS))
+                assert abs(rec_masses[el] - float(case["cal_targets"][el])) <= cal_el_tol, (
+                    f"{cid} reconstructed {el} mass mismatch"
+                )
+
+            if case["T_K"] == 1500.0:
+                # 1500 K redox pins require both solutions to close oxygen within 1e-9 relative error.
+                cal_o_tgt = float(case["cal_targets"]["O"])
+                cal_o_rel = abs(rec_masses["O"] - cal_o_tgt) / cal_o_tgt
+                assert cal_o_rel <= 1.0e-9, (
+                    f"{cid} CALLIOPE relative O residual {cal_o_rel:.4e} > 1e-9"
+                )
+
+                stoich_o = {"H2O_g": 1, "O2_g": 2, "CO2_g": 2, "CO_g": 1, "O2S_g": 2}
+                atm_o_tgt = float(case["atm_targets"]["O"])
+                atm_o_rec = sum(
+                    float(asdict_auth[sp_g]["gas_mass"][idx])
+                    * (
+                        stoich_o[sp_g]
+                        * float(atom_mass_atm["O"])
+                        / float(asdict_auth[sp_g]["molar_mass"][idx])
+                    )
+                    for sp_g in stoich_o
+                )
+                atm_o_rel = abs(atm_o_rec - atm_o_tgt) / atm_o_tgt
+                assert atm_o_rel <= 1.0e-9, (
+                    f"{cid} atmodeller relative O residual {atm_o_rel:.4e} > 1e-9"
+                )
+
+            exp_case = AUTHO_EXPECTED_DEX[cid]
+            _assert_near_dex(
+                math.log10(float(cal_out["P_surf"]) / float(ptot_auth[idx])),
+                exp_case["P_surf"],
+                AUTHO_MAJOR_MARGIN_DEX,
+                f"{cid} P_surf",
+            )
+            for sp_cal, sp_atm in (
+                ("H2O", "H2O_g"),
+                ("CO2", "CO2_g"),
+                ("N2", "N2_g"),
+                ("SO2", "O2S_g"),
+                ("O2", "O2_g"),
+                ("H2", "H2_g"),
+                ("CO", "CO_g"),
+                ("CH4", "CH4_g"),
+                ("NH3", "H3N_g"),
+                ("H2S", "H2S_g"),
+                ("S2", "S2_g"),
+            ):
+                if sp_cal in AUTHO_HELD_FOR_H2S_FIX:
+                    continue
+                margin = (
+                    AUTHO_MAJOR_MARGIN_DEX
+                    if sp_cal in ("H2O", "CO2", "N2", "SO2")
+                    else GRID_OFFSET_MARGIN_DEX
+                )
+                _assert_near_dex(
+                    math.log10(
+                        float(cal_out[f"{sp_cal}_bar"])
+                        / float(asdict_auth[sp_atm]["pressure"][idx])
+                    ),
+                    exp_case[sp_cal],
+                    margin,
                     f"{cid} {sp_cal}",
                 )
 
-        q_so2_cal = float(cal_out["SO2_bar"]) / (
-            (float(cal_out["S2_bar"]) ** 0.5) * float(cal_out["O2_bar"])
-        )
-        q_so2_atm = float(asdict_buf["O2S_g"]["pressure"][idx]) / (
-            (float(asdict_buf["S2_g"]["pressure"][idx]) ** 0.5)
-            * float(asdict_buf["O2_g"]["pressure"][idx])
-        )
-        _assert_near_dex(
-            math.log10(q_so2_cal / q_so2_atm),
-            K_OFFSET_EXPECTED_DEX[case["T_K"]]["SO2"],
-            K_OFFSET_MARGIN_DEX,
-            f"{cid} Q_SO2",
-        )
-
-        d_h2s_case = math.log10(
-            float(cal_out["H2S_bar"]) / float(asdict_buf["H2S_g"]["pressure"][idx])
-        )
-        d_s2_case = math.log10(
-            float(cal_out["S2_bar"]) / float(asdict_buf["S2_g"]["pressure"][idx])
-        )
-        d_so2_case = math.log10(
-            float(cal_out["SO2_bar"]) / float(asdict_buf["O2S_g"]["pressure"][idx])
-        )
-        sulfur_report_rows.append(
-            f"{cid}: d_H2S={d_h2s_case:+.4f}, d_S2={d_s2_case:+.4f}, d_SO2={d_so2_case:+.4f}"
-        )
-        sulfur_tsv_rows.append(f"{cid}\t{d_h2s_case:+.6f}\t{d_s2_case:+.6f}\t{d_so2_case:+.6f}")
-
-    for idx, case in enumerate(autho_cases):
-        cid = case["case_id"]
-        cal_out, used_preseed = solve_cal(
-            case["cal_targets"], case["T_K"], case["fO2_shift_IW"], autho=True
-        )
-        if used_preseed:
-            preseed_count += 1
-
-        rec_masses = _reconstruct_gas_element_masses(
-            cal_out,
-            r_int=r_earth,
-            g_surf=g_surf,
-            elements=("H", "C", "N", "S", "O"),
-            molar_mass_map=molar_mass,
-        )
-        for el in ("H", "C", "N", "S", "O"):
-            cal_el_tol = max(float(case["cal_targets"][el]) * 1.0e-5, float(TRUNC_MASS))
-            assert abs(rec_masses[el] - float(case["cal_targets"][el])) <= cal_el_tol, (
-                f"{cid} reconstructed {el} mass mismatch"
+            q_so2_cal = float(cal_out["SO2_bar"]) / (
+                (float(cal_out["S2_bar"]) ** 0.5) * float(cal_out["O2_bar"])
             )
-
-        assert AUTHO_HELD_FOR_H2S_FIX == ("H2S", "S2")
-        exp_case = AUTHO_EXPECTED_DEX[cid]
-        _assert_near_dex(
-            math.log10(float(cal_out["P_surf"]) / float(ptot_auth[idx])),
-            exp_case["P_surf"],
-            GRID_OFFSET_MARGIN_DEX,
-            f"{cid} P_surf",
-        )
-        for sp_cal, sp_atm in (
-            ("H2O", "H2O_g"),
-            ("CO2", "CO2_g"),
-            ("N2", "N2_g"),
-            ("SO2", "O2S_g"),
-            ("O2", "O2_g"),
-            ("H2", "H2_g"),
-            ("CO", "CO_g"),
-            ("CH4", "CH4_g"),
-            ("NH3", "H3N_g"),
-        ):
+            q_so2_atm = float(asdict_auth["O2S_g"]["pressure"][idx]) / (
+                (float(asdict_auth["S2_g"]["pressure"][idx]) ** 0.5)
+                * float(asdict_auth["O2_g"]["pressure"][idx])
+            )
             _assert_near_dex(
-                math.log10(
-                    float(cal_out[f"{sp_cal}_bar"]) / float(asdict_auth[sp_atm]["pressure"][idx])
-                ),
-                exp_case[sp_cal],
-                GRID_OFFSET_MARGIN_DEX,
-                f"{cid} {sp_cal}",
+                math.log10(q_so2_cal / q_so2_atm),
+                K_OFFSET_EXPECTED_DEX[case["T_K"]]["SO2"],
+                K_OFFSET_MARGIN_DEX,
+                f"{cid} Q_SO2",
             )
 
-        q_so2_cal = float(cal_out["SO2_bar"]) / (
-            (float(cal_out["S2_bar"]) ** 0.5) * float(cal_out["O2_bar"])
-        )
-        q_so2_atm = float(asdict_auth["O2S_g"]["pressure"][idx]) / (
-            (float(asdict_auth["S2_g"]["pressure"][idx]) ** 0.5)
-            * float(asdict_auth["O2_g"]["pressure"][idx])
-        )
-        _assert_near_dex(
-            math.log10(q_so2_cal / q_so2_atm),
-            K_OFFSET_EXPECTED_DEX[case["T_K"]]["SO2"],
-            K_OFFSET_MARGIN_DEX,
-            f"{cid} Q_SO2",
+            d_h2s_case = math.log10(
+                float(cal_out["H2S_bar"]) / float(asdict_auth["H2S_g"]["pressure"][idx])
+            )
+            d_s2_case = math.log10(
+                float(cal_out["S2_bar"]) / float(asdict_auth["S2_g"]["pressure"][idx])
+            )
+            d_so2_case = math.log10(
+                float(cal_out["SO2_bar"]) / float(asdict_auth["O2S_g"]["pressure"][idx])
+            )
+            sulfur_report_rows.append(
+                f"{cid}: d_H2S={d_h2s_case:+.4f}, d_S2={d_s2_case:+.4f}, d_SO2={d_so2_case:+.4f}"
+            )
+            sulfur_tsv_rows.append(
+                f"{cid}\t{d_h2s_case:+.6f}\t{d_s2_case:+.6f}\t{d_so2_case:+.6f}"
+            )
+
+        record_property("calliope_preseed_count", preseed_count)
+        assert preseed_count == 0, (
+            f"Expected 0 preseeded solves with nguess=1000, got {preseed_count}"
         )
 
-        d_h2s_case = math.log10(
-            float(cal_out["H2S_bar"]) / float(asdict_auth["H2S_g"]["pressure"][idx])
-        )
-        d_s2_case = math.log10(
-            float(cal_out["S2_bar"]) / float(asdict_auth["S2_g"]["pressure"][idx])
-        )
-        d_so2_case = math.log10(
-            float(cal_out["SO2_bar"]) / float(asdict_auth["O2S_g"]["pressure"][idx])
-        )
-        sulfur_report_rows.append(
-            f"{cid}: d_H2S={d_h2s_case:+.4f}, d_S2={d_s2_case:+.4f}, d_SO2={d_so2_case:+.4f}"
-        )
-        sulfur_tsv_rows.append(f"{cid}\t{d_h2s_case:+.6f}\t{d_s2_case:+.6f}\t{d_so2_case:+.6f}")
+        assert len(held_for_h2s_rows) == 152
+        record_property("buffered_held_for_h2s_fix_count", len(held_for_h2s_rows))
+        record_property("buffered_held_for_h2s_fix_dex", "; ".join(held_for_h2s_rows))
 
-    record_property("calliope_preseed_count", preseed_count)
-    assert preseed_count == 0, f"Expected 0 preseeded solves with nguess=1000, got {preseed_count}"
-
-    assert len(held_for_h2s_rows) == 161
-    record_property("buffered_held_for_h2s_fix_count", len(held_for_h2s_rows))
-    record_property("buffered_held_for_h2s_fix_dex", "; ".join(held_for_h2s_rows))
-
-    assert len(sulfur_report_rows) == 72
-    report_path = Path(os.environ.get("CHEM_SULFUR_REPORT_PATH", "sulfur_72_case_report.tsv"))
-    report_path.write_text(
-        "case_id\td_H2S_dex\td_S2_dex\td_SO2_dex\n" + "\n".join(sulfur_tsv_rows) + "\n",
-        encoding="utf-8",
-    )
+        assert len(sulfur_report_rows) == 72
+        record_property("sulfur_72_case_report_dex", "\n".join(sulfur_report_rows))
+        print("72-case sulfur species log10(CALLIOPE/atmodeller) report [dex]:")
+        for row in sulfur_report_rows:
+            print(f"  {row}")
+    finally:
+        report_path.write_text(
+            "case_id\td_H2S_dex\td_S2_dex\td_SO2_dex\n" + "\n".join(sulfur_tsv_rows) + "\n",
+            encoding="utf-8",
+        )
     assert report_path.is_file() and report_path.stat().st_size > 0
-    record_property("sulfur_72_case_report_dex", "\n".join(sulfur_report_rows))
-    print("72-case sulfur species log10(CALLIOPE/atmodeller) report [dex]:")
-    for row in sulfur_report_rows:
-        print(f"  {row}")
