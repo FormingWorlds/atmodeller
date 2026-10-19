@@ -262,6 +262,19 @@ def _solve_and_assert_group(
             assert abs_err <= solver_tol_kg, (
                 f"{case_id} {el}: |recovered - target| = {abs_err!r} > solver tol {solver_tol_kg!r}"
             )
+            if t_kg == 0.0:
+                for sp_key, stoich in ATMODELLER_SPECIES_STOICH.items():
+                    if el in stoich and sp_key in out_dict:
+                        if sp_key.endswith("_cd"):
+                            m_cd = float(np.squeeze(out_dict[sp_key]["total_mass"])[idx])
+                            assert m_cd == 0.0, (
+                                f"{case_id} {sp_key} mass {m_cd} != 0 for zero {el}"
+                            )
+                        else:
+                            p_sp = float(np.squeeze(out_dict[sp_key]["pressure"])[idx])
+                            assert p_sp == 0.0, (
+                                f"{case_id} {sp_key} pressure {p_sp} != 0 for zero {el}"
+                            )
     return saw_liq, saw_cond
 
 

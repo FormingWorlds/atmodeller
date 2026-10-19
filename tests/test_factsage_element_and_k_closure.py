@@ -9,7 +9,8 @@ simultaneously:
    activities, and condensate total masses within a flat ``0.05 dex``
    (``|log10(actual) - log10(target)| <= TOLERANCE``; note that
    (test_graphite_water_stable, FactSage, mass_C_cd) lies 9e-5 dex below this tolerance
-   and is additionally pinned at its measured value +-0.002 dex) for all species except 2
+   and is additionally pinned at +0.049912 +- 0.002 dex, giving real window [0.047912, 0.05])
+   for all species except 2
    documented FactSage polynomial-amplified entries in ``RECORDED_SPECIES_OFFSETS_DEX``
    (checked within ``+-0.005 dex`` of their measured offset):
    - ``(test_CHO_oxidised, FactSage, CH4_g) = +0.093050 dex``: trace ``CH4_g``
