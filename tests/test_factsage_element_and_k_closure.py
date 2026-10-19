@@ -6,10 +6,23 @@ Verifies that across all 9 active FactSage (Gibbs energy minimisation) and FastC
 simultaneously:
 
 1. Matches the FactSage and FastChem reference gas partial pressures, condensate
-   activities, and condensate total masses in log10 space within ``0.05 dex``
-   (``|log10(actual) - log10(target)| <= 0.05``) for condensate masses and major
-   species (``>= 1.0e-2`` bar), and within ``0.10 dex`` for trace species
-   (``< 1.0e-2`` bar).
+   activities, and condensate total masses via ``helper.isclose(..., log=True,
+   rtol=TOLERANCE, atol=TOLERANCE)`` and within a flat ``0.05 dex``
+   (``|log10(actual) - log10(target)| <= TOLERANCE``) for all species except 3
+   documented FactSage polynomial-amplified entries in ``RECORDED_SPECIES_OFFSETS_DEX``
+   (checked within ``+-0.005 dex`` of their measured offset):
+   - ``(test_CHO_oxidised, FactSage, CH4_g) = +0.093050 dex``: trace ``CH4_g``
+     (``1.29e-3`` bar at ``1400 K``, ``IW+2``), where ``p_CH4 ~ p_CO2 * p_H2^2 / p_O2``
+     amplifies the ``~0.03 dex`` ``H2``/``CO`` FactSage-vs-NASA-Glenn Gibbs polynomial
+     difference by ``3x``.
+   - ``(test_water_stable, FactSage, O2_g) = -0.094449 dex``: trace ``O2_g``
+     (``5.6433e-58`` bar at ``411.75 K``, liquid-water equilibrium), where
+     ``p_O2 = (K_H2O * a_H2O_cd / p_H2)^2`` squares the ``~0.047 dex`` low-temperature
+     liquid-water/vapour Gibbs polynomial difference.
+   - ``(test_graphite_water_stable, FactSage, mass_C_cd) = +0.049912 dex``: condensed
+     graphite mass at ``430 K``, where the ``-0.036 dex`` ``CO2_g`` partial-pressure
+     offset (``3.96`` vs ``4.31`` bar) shifts the remaining carbon budget into
+     ``C_cd`` by carbon mass conservation.
 2. Conserves elemental mass summed from solved gas, condensate, and dissolved
    melt species moles against the input mass constraints to ``SolverParameters.atol``
    (``1.0e-6``).
@@ -55,9 +68,17 @@ SPECIES_STOICH: dict[str, dict[str, int]] = {
     "H_g": {"H": 1},
 }
 
-# Log10 tolerance [dex] applied directly as |log10(actual) - log10(target)| <= tol_dex.
-LOG10_TOL_MAJOR_DEX = 0.05
-LOG10_TOL_TRACE_DEX = 0.10
+# Repository benchmark log10 tolerance [dex] matching test_CHO.py, test_HO.py, test_condensates.py.
+TOLERANCE: float = 5.0e-2
+RECORDED_OFFSET_MARGIN_DEX: float = 0.005
+
+# Measured log10(actual / target) [dex] for the 3 documented FactSage polynomial-amplified entries,
+# asserted within +-RECORDED_OFFSET_MARGIN_DEX (0.005 dex).
+RECORDED_SPECIES_OFFSETS_DEX: dict[tuple[str, str, str], float] = {
+    ("test_CHO_oxidised", "FactSage", "CH4_g"): 0.093050,
+    ("test_water_stable", "FactSage", "O2_g"): -0.094449,
+    ("test_graphite_water_stable", "FactSage", "mass_C_cd"): 0.049912,
+}
 
 
 def _target_element_masses_from_input(mass_constraints: dict[str, Any]) -> dict[str, float]:
@@ -350,16 +371,30 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
         # 1. Formulation species and condensate mass match in direct log10 space [dex].
         for ref_code, target_dict in case["targets"].items():
             for sp_key, target_val in target_dict.items():
+                rec_key = (case_id, ref_code, sp_key)
                 if sp_key.startswith("mass_"):
                     cond_sp = sp_key[len("mass_") :]
                     actual_mass_kg = float(np.squeeze(asdict[cond_sp]["total_mass"]))
                     if target_val > 0.0:
                         assert math.isfinite(actual_mass_kg) and actual_mass_kg > 0.0
-                        d_dex = abs(math.log10(actual_mass_kg) - math.log10(float(target_val)))
-                        assert d_dex <= LOG10_TOL_MAJOR_DEX, (
-                            f"{case_id} ({ref_code}) condensate {cond_sp} total_mass: "
-                            f"|d_log10|={d_dex:.6f} dex > {LOG10_TOL_MAJOR_DEX} dex"
+                        signed_dex = math.log10(actual_mass_kg) - math.log10(float(target_val))
+                        assert np.isclose(
+                            math.log10(actual_mass_kg),
+                            math.log10(float(target_val)),
+                            rtol=TOLERANCE,
+                            atol=TOLERANCE,
                         )
+                        if rec_key in RECORDED_SPECIES_OFFSETS_DEX:
+                            exp_dex = RECORDED_SPECIES_OFFSETS_DEX[rec_key]
+                            assert abs(signed_dex - exp_dex) <= RECORDED_OFFSET_MARGIN_DEX, (
+                                f"{case_id} ({ref_code}) condensate {cond_sp} total_mass: "
+                                f"d_log10={signed_dex:+.6f} dex outside {exp_dex:+.6f}+-{RECORDED_OFFSET_MARGIN_DEX} dex"
+                            )
+                        else:
+                            assert abs(signed_dex) <= TOLERANCE, (
+                                f"{case_id} ({ref_code}) condensate {cond_sp} total_mass: "
+                                f"|d_log10|={abs(signed_dex):.6f} dex > {TOLERANCE} dex"
+                            )
                     else:
                         # At stability floor tau = 1e-25, inactive condensate mass is O(tau) of budget.
                         cond_el = next(iter(SPECIES_STOICH[cond_sp]))
@@ -372,14 +407,24 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                     assert sp_key in quick, f"{case_id}: missing {sp_key} in quick_look"
                     actual_val = float(np.squeeze(quick[sp_key]))
                     assert math.isfinite(actual_val) and actual_val > 0.0
-                    tol_dex = (
-                        LOG10_TOL_MAJOR_DEX if float(target_val) >= 1.0e-2 else LOG10_TOL_TRACE_DEX
+                    signed_dex = math.log10(actual_val) - math.log10(float(target_val))
+                    assert np.isclose(
+                        math.log10(actual_val),
+                        math.log10(float(target_val)),
+                        rtol=TOLERANCE,
+                        atol=TOLERANCE,
                     )
-                    d_dex = abs(math.log10(actual_val) - math.log10(float(target_val)))
-                    assert d_dex <= tol_dex, (
-                        f"{case_id} ({ref_code}) species {sp_key}: "
-                        f"|d_log10|={d_dex:.6f} dex > {tol_dex} dex"
-                    )
+                    if rec_key in RECORDED_SPECIES_OFFSETS_DEX:
+                        exp_dex = RECORDED_SPECIES_OFFSETS_DEX[rec_key]
+                        assert abs(signed_dex - exp_dex) <= RECORDED_OFFSET_MARGIN_DEX, (
+                            f"{case_id} ({ref_code}) species {sp_key}: "
+                            f"d_log10={signed_dex:+.6f} dex outside {exp_dex:+.6f}+-{RECORDED_OFFSET_MARGIN_DEX} dex"
+                        )
+                    else:
+                        assert abs(signed_dex) <= TOLERANCE, (
+                            f"{case_id} ({ref_code}) species {sp_key}: "
+                            f"|d_log10|={abs(signed_dex):.6f} dex > {TOLERANCE} dex"
+                        )
 
         # 2. Stoichiometric species-summed elemental mass conservation against input constraints.
         elem_masses_recovered: dict[str, float] = {}

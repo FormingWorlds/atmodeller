@@ -1,0 +1,50 @@
+name: atmodeller nightly
+
+on:
+  schedule:
+    # 03:00 UTC daily.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    name: atmodeller-nightly (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.7.20'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install atmodeller and CALLIOPE
+        run: |
+          uv sync --all-extras --dev
+          uv pip install "fwl-calliope @ git+https://github.com/FormingWorlds/CALLIOPE.git@main"
+
+      - name: Run test suite including cross-code consistency
+        env:
+          CHEM_CROSS_CODE_REQUIRED: '1'
+          CHEM_SULFUR_REPORT_PATH: sulfur_72_case_report.tsv
+        run: .venv/bin/pytest
+
+      - name: Upload 72-case sulfur report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: atmodeller-calliope-sulfur-72-case-report
+          path: sulfur_72_case_report.tsv
+          if-no-files-found: error
