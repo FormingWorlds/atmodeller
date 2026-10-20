@@ -24,14 +24,18 @@ simultaneously:
 2. Conserves elemental mass summed from solved gas, condensate, and dissolved
    melt species moles against the input mass constraints to ``SolverParameters.atol``
    (``1.0e-6``).
-3. Satisfies reaction-quotient mass-action equilibrium closure
-   ``|reaction_matrix @ log_activity - log_Kp| <= 1.0e-6`` and Gibbs-to-Kp
-   consistency ``get_log_Kp == -reaction_matrix @ (G^0 / RT)``.
+3. Satisfies internal reaction-quotient mass-action equilibrium closure
+   ``|reaction_matrix @ log_activity - log_Kp| <= 1.0e-6`` and internal
+   Gibbs-to-Kp consistency ``get_log_Kp == -reaction_matrix @ (G^0 / RT)``
+   (these two checks verify internal solver and matrix consistency; the
+   independent equilibrium-constant check is the comparison with CALLIOPE in
+   ``test_cross_code_consistency.py``).
 """
 
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 import numpy as np
@@ -47,10 +51,19 @@ from atmodeller import (
 )
 from atmodeller.containers import SolverParameters
 from atmodeller.engine import get_log_Kp
+from atmodeller.output import OutputSolution
 from atmodeller.thermodata import IronWustiteBuffer
 from atmodeller.utilities import earth_oceans_to_hydrogen_mass
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.nightly,
+    pytest.mark.skipif(
+        os.environ.get("GITHUB_WORKFLOW") == "CI"
+        and os.environ.get("CHEM_CROSS_CODE_REQUIRED") != "1",
+        reason="Nightly consistency suite; skipped in PR CI workflow",
+    ),
+]
 
 SPECIES_STOICH: dict[str, dict[str, int]] = {
     "H2_g": {"H": 2},
@@ -66,7 +79,7 @@ SPECIES_STOICH: dict[str, dict[str, int]] = {
     "H_g": {"H": 1},
 }
 
-# Repository benchmark log10 tolerance [dex] matching test_CHO.py, test_HO.py, test_condensates.py.
+# Flat 0.05 dex absolute log10 bound (upstream conftest.py uses rtol=0.05 and atol=0.05 on log10).
 TOLERANCE: float = 5.0e-2
 RECORDED_OFFSET_MARGIN_DEX: float = 0.005
 
@@ -358,6 +371,7 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
             solver=case.get("solver", "basic"),
         )
         output = model.output
+        assert isinstance(output, OutputSolution)
         assert bool(np.squeeze(output.multi_attempt_solution.solver_success)), (
             f"{case_id}: solver did not converge"
         )
@@ -392,7 +406,8 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                                     f"d_log10={signed_dex:+.6f} dex outside +0.049912+-0.002 dex"
                                 )
                     else:
-                        # At stability floor tau = 1e-25, inactive condensate mass is O(tau) of budget.
+                        # At stability floor tau = 1e-25, inactive condensate
+                        # mass is O(tau) of the element budget.
                         cond_el = next(iter(SPECIES_STOICH[cond_sp]))
                         el_budget = input_elem_targets[cond_el]
                         assert actual_mass_kg / el_budget < 1.0e-23, (
@@ -442,7 +457,8 @@ def test_factsage_and_fastchem_formulation_element_and_k_closure() -> None:
                 f"recovered={rec_kg!r} kg, target={target_kg!r} kg, rel_err={rel_err!r}"
             )
 
-        # 3. Gibbs-to-Kp consistency and reaction-quotient closure |ln Q - ln K_p| <= 1e-6.
+        # 3. Internal consistency: Gibbs-to-Kp and reaction-quotient closure
+        # (the independent equilibrium-constant check is vs CALLIOPE).
         rxn_matrix = np.asarray(output.parameters.species_network.reaction_matrix, dtype=float)
         t_arr = output.parameters.state.temperature
         gibbs_over_rt = np.array(

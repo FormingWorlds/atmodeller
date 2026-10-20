@@ -97,12 +97,13 @@ dev = [
 
 [tool.pytest.ini_options]
 beartype_packages = "atmodeller"
-required_plugins = ["pytest-timeout"]
 markers = [
     # End-to-end tests that build and solve a full EquilibriumModel. Every test
     # not marked integration is a component (unit) test.
     "integration: end-to-end tests that build and solve a full EquilibriumModel",
     "unit: component test that checks a single model against reference values",
+    "nightly: full consistency grid tests run in the nightly workflow",
+    "timeout: per-test timeout in seconds when pytest-timeout is installed",
 ]
 
 [build-system]

@@ -6,11 +6,16 @@ melt, and condensate phases against the input elemental inventory over the
 authoritative-oxygen grid (4 T x 3 inventories), 2 volatile-inventory
 configurations using elemental budgets from PROTEUS reference inputs at
 T = 2000 K, and a 5-noble-gas complement configuration.
+
+Scope: the melt is checked for element balance only (no cross-code solubility
+comparison); gas-phase cross-code consistency is checked in
+test_cross_code_consistency.py.
 """
 
 from __future__ import annotations
 
 import math
+import os
 
 import jax.numpy as jnp
 import numpy as np
@@ -24,10 +29,19 @@ from atmodeller import (
     SpeciesNetwork,
 )
 from atmodeller.containers import SolverParameters
+from atmodeller.output import OutputSolution
 from atmodeller.solubility import get_solubility_models
 from atmodeller.thermodata import IronWustiteBuffer
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.nightly,
+    pytest.mark.skipif(
+        os.environ.get("GITHUB_WORKFLOW") == "CI"
+        and os.environ.get("CHEM_CROSS_CODE_REQUIRED") != "1",
+        reason="Nightly consistency suite; skipped in PR CI workflow",
+    ),
+]
 
 ATMODELLER_SPECIES_STOICH: dict[str, dict[str, int]] = {
     "H2O_g": {"H": 2, "O": 1},
@@ -234,6 +248,7 @@ def _solve_and_assert_group(
         solver="robust",
         solver_parameters=solver_params,
     )
+    assert isinstance(model.output, OutputSolution)
     solver_success = np.asarray(model.output.multi_attempt_solution.solver_success, dtype=bool)
     assert np.all(solver_success), (
         f"Solver failed on {[group_cases[i]['case_id'] for i in np.where(~solver_success)[0]]}"
@@ -251,12 +266,12 @@ def _solve_and_assert_group(
             assert math.isfinite(rec["O"]["total_kg"]), f"{case_id}: O total_kg not finite"
             assert rec["O"]["total_kg"] > 0.0, f"{case_id}: O total_kg <= 0"
         for el in checked_elements:
-            if rec[el]["liq_kg"] > 0.0:
-                saw_liq = True
-            if rec[el]["cond_kg"] > 0.0:
-                saw_cond = True
             t_kg = float(case["targets"][el])
             rec_tot = rec[el]["total_kg"]
+            if rec[el]["liq_kg"] > 1.0e-6 * rec_tot:
+                saw_liq = True
+            if rec[el]["cond_kg"] > 1.0e-6 * rec_tot:
+                saw_cond = True
             abs_err = abs(rec_tot - t_kg)
             solver_tol_kg = SOLVER_RESIDUAL_TOL * t_kg
             assert abs_err <= solver_tol_kg, (
@@ -362,6 +377,7 @@ def test_engine_element_moles_and_mass_residual_against_stoichiometry():
         solver="basic",
         solver_parameters=SolverParameters(atol=1.0e-6, rtol=1.0e-4, max_steps=1024),
     )
+    assert isinstance(model.output, OutputSolution)
     assert bool(np.squeeze(model.output.multi_attempt_solution.solver_success))
 
     params = model.output.parameters

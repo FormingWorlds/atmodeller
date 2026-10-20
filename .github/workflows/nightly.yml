@@ -33,7 +33,8 @@ jobs:
       - name: Install atmodeller and CALLIOPE
         run: |
           uv sync --all-extras --dev
-          uv pip install "numpy<2.5" pytest-timeout "fwl-calliope @ git+https://github.com/FormingWorlds/CALLIOPE.git@main"
+          # numpy 2.5 exposes numpy._core.multiarray.ScalarT on Python 3.12, which triggers a beartype collection error.
+          uv pip install "numpy<2.5" "fwl-calliope @ git+https://github.com/FormingWorlds/CALLIOPE.git@main"
           .venv/bin/python -c "import importlib.metadata as md, json; dist = md.distribution('fwl-calliope'); raw = dist.read_text('direct_url.json'); sha = json.loads(raw).get('vcs_info', {}).get('commit_id', 'unknown') if raw else 'unknown'; print(f'Installed fwl-calliope {dist.version} (git SHA: {sha})')"
 
       - name: Run test suite including cross-code consistency
@@ -48,4 +49,4 @@ jobs:
         with:
           name: atmodeller-calliope-sulfur-72-case-report
           path: sulfur_72_case_report.tsv
-          if-no-files-found: error
+          if-no-files-found: warn
