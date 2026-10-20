@@ -79,7 +79,8 @@ SPECIES_STOICH: dict[str, dict[str, int]] = {
     "H_g": {"H": 1},
 }
 
-# Flat 0.05 dex absolute log10 bound (upstream conftest.py uses rtol=0.05 and atol=0.05 on log10).
+# Flat 0.05 dex absolute log10 bound (upstream test_CHO.py, test_HO.py, and test_condensates.py
+# pass log=True, rtol=atol=0.05 to conftest.py Helper.isclose, whose defaults are 1e-6).
 TOLERANCE: float = 5.0e-2
 RECORDED_OFFSET_MARGIN_DEX: float = 0.005
 
