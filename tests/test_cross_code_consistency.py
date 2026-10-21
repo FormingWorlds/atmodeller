@@ -1258,7 +1258,7 @@ def test_atmodeller_get_log_kp_and_gas_only_speciation_vs_janaf_schaefer(record_
         assert np.allclose(ln_q, code_log_kp, rtol=0.0, atol=1.0e-6), msg_q
 
     keq_models = {
-        key: ModifiedKeq(key)
+        key: ModifiedKeq(key, "fischer")
         for key in (
             "janaf_H2",
             "janaf_CO",
@@ -1399,7 +1399,7 @@ def test_atmodeller_vs_calliope_72_case_gas_only_grid(record_property, tmp_path)
     )
     gas_species = tuple(ChemicalSpecies.create_gas(sp) for sp in species_names)
     solver_params = SolverParameters(atol=1.0e-6, rtol=1.0e-4, max_steps=1024, multistart=10)
-    fo2_fischer = OxygenFugacity()
+    fo2_fischer = OxygenFugacity("fischer")
 
     # Solve 60 buffered cases in atmodeller and take g_surf from Planet.surface_gravity.
     n_buf = len(buffered_cases)
@@ -1468,13 +1468,14 @@ def test_atmodeller_vs_calliope_72_case_gas_only_grid(record_property, tmp_path)
         fo2_shift: float,
         autho: bool,
     ) -> dict[str, float]:
-        ddict: dict[str, float | int] = {
+        ddict: dict[str, float | int | str] = {
             "M_mantle": m_mantle,
             "gravity": g_surf,
             "radius": r_earth,
             "Phi_global": 0.0,
             "T_magma": t_k,
             "fO2_shift_IW": fo2_shift,
+            "fO2_model": "fischer",
         }
         for sp in volatile_species:
             ddict[f"{sp}_included"] = 1
