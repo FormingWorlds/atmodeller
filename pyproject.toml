@@ -92,6 +92,7 @@ dev = [
     "pytest>=8.4.1",
     "pytest-beartype>=0.2.0,<0.3.0",
     "pytest-cov>=6.2.1",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.pytest.ini_options]
@@ -101,6 +102,8 @@ markers = [
     # not marked integration is a component (unit) test.
     "integration: end-to-end tests that build and solve a full EquilibriumModel",
     "unit: component test that checks a single model against reference values",
+    "nightly: full consistency grid tests run in the nightly workflow",
+    "timeout: per-test timeout in seconds when pytest-timeout is installed",
 ]
 
 [build-system]
