@@ -62,7 +62,7 @@ def test_IW_Hirschmann08() -> None:
     )
     logger.info("log10_fugacity (Very low T, low P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-23.93938230619323, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-23.93938230619323, RTOL, ATOL)
 
 
 def test_IW_Hirschmann21() -> None:
@@ -76,49 +76,49 @@ def test_IW_Hirschmann21() -> None:
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_LOW_TEMPERATURE, TEST_LOW_PRESSURE)
     logger.info("log10_fugacity (Low T, low P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-20.816597461900887, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-20.816597461900887, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_MEDIUM_TEMPERATURE, TEST_LOW_PRESSURE)
     logger.info("log10_fugacity (Med T, low P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-7.053620769567622, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-7.053620769567622, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_HIGH_TEMPERATURE, TEST_LOW_PRESSURE)
     logger.info("log10_fugacity (High T, low P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-2.562340960147525, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-2.562340960147525, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_LOW_TEMPERATURE, TEST_MEDIUM_PRESSURE)
     logger.info("log10_fugacity (Low T, med P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-17.97502528402518, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-17.97502528402518, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(
         TEST_MEDIUM_TEMPERATURE, TEST_MEDIUM_PRESSURE
     )
     logger.info("log10_fugacity (Med T, med P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-5.619533227830953, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-5.619533227830953, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_HIGH_TEMPERATURE, TEST_MEDIUM_PRESSURE)
     logger.info("log10_fugacity (High T, med P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(-1.5951793921085295, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(-1.5951793921085295, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_LOW_TEMPERATURE, TEST_HIGH_PRESSURE)
     logger.info("log10_fugacity (Low T, high P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(4.232976104931987, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(4.232976104931987, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_MEDIUM_TEMPERATURE, TEST_HIGH_PRESSURE)
     logger.info("log10_fugacity (Med T, high P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(5.534585436736885, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(5.534585436736885, RTOL, ATOL)
 
     log10_fugacity: ArrayLike = buffer.log10_fugacity(TEST_HIGH_TEMPERATURE, TEST_HIGH_PRESSURE)
     logger.info("log10_fugacity (High T, high P) = %s", log10_fugacity)
 
-    assert log10_fugacity == approx(5.887511178821558, RTOL, ATOL)
+    assert float(log10_fugacity) == approx(5.887511178821558, RTOL, ATOL)
 
 
 def test_IW_Hirschmann() -> None:
@@ -136,7 +136,9 @@ def test_IW_Hirschmann() -> None:
         TEST_BELOW_SWITCH_TEMPERATURE, TEST_LOW_PRESSURE
     )
 
-    assert log10_fugacity_composite == approx(log10_fugacity_low_temperature, RTOL, ATOL)
+    assert float(log10_fugacity_composite) == approx(
+        float(log10_fugacity_low_temperature), RTOL, ATOL
+    )
 
     log10_fugacity_high_temperature: ArrayLike = high_temperature_buffer.log10_fugacity(
         TEST_ABOVE_SWITCH_TEMPERATURE, TEST_LOW_PRESSURE
@@ -145,7 +147,9 @@ def test_IW_Hirschmann() -> None:
         TEST_ABOVE_SWITCH_TEMPERATURE, TEST_LOW_PRESSURE
     )
 
-    assert log10_fugacity_composite == approx(log10_fugacity_high_temperature, RTOL, ATOL)
+    assert float(log10_fugacity_composite) == approx(
+        float(log10_fugacity_high_temperature), RTOL, ATOL
+    )
 
 
 def test_IW_Hirschmann08_fixed_P() -> None:
@@ -168,5 +172,5 @@ def test_IW_Hirschmann08_fixed_P() -> None:
     logger.info("log10_fugacity_high_pressure = %s", log10_fugacity_high_pressure)
 
     # The evaluation should be at 1 bar pressure and the input pressure ignored
-    assert log10_fugacity_low_pressure == approx(-23.93938230619323, RTOL, ATOL)
-    assert log10_fugacity_high_pressure == approx(-23.93938230619323, RTOL, ATOL)
+    assert float(log10_fugacity_low_pressure) == approx(-23.93938230619323, RTOL, ATOL)
+    assert float(log10_fugacity_high_pressure) == approx(-23.93938230619323, RTOL, ATOL)
