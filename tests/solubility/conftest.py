@@ -18,6 +18,7 @@
 
 import logging
 
+import numpy as np
 import pytest
 from jaxtyping import ArrayLike
 from pytest import approx
@@ -57,7 +58,7 @@ class CheckValues:
         )
         logger.debug("%s, concentration = %s ppmw", function_name, concentration)
 
-        assert concentration == approx(expected_concentration, rtol, atol)
+        assert np.asarray(concentration) == approx(np.asarray(expected_concentration), rtol, atol)
 
 
 @pytest.fixture(scope="module")
